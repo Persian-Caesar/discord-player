@@ -96,10 +96,10 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                     20_000
                 );
                 this.connection.subscribe(this.player);
-            } catch {
+            } catch (err: any) {
                 this.connection.destroy();
                 this.connection = null;
-                this.emit(MusicPlayerEvent.Error, this.createError("Can't connect to the voice channel."));
+                this.emit(MusicPlayerEvent.Error, this.createError("Can't connect to the voice channel. => " + err.message));
             }
         }
     }
@@ -113,7 +113,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             resourceType: "tracks",
             limit: 1
         });
-        let url = sc_results.collection[0].permalink_url;
+        let url = sc_results.collection?.[0]?.permalink_url;
         if (!url) {
             // spotify youtube and also soundcloud
             const playdl_results = await playdl.search(query, {
@@ -125,7 +125,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                     deezer: "track"
                 }
             });
-            url = playdl_results[0].url;
+            url = playdl_results[0]?.url;
         }
 
         return url;
@@ -292,7 +292,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             this.connection.destroy();
             this.connection = null;
         }
-        
+
         this.playing = false;
         this.queue = [];
         this.history = [];
