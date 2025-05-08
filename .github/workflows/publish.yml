@@ -26,7 +26,7 @@ jobs:
         run: |
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" >> ~/.npmrc
           echo "@persian-caesar:registry=https://npm.pkg.github.com/" >> ~/.npmrc
-          echo "//npm.pkg.github.com/:_authToken=${ secrets.GH_PACKAGES_TOKEN }" >> ~/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GH_PACKAGES_TOKEN }}" >> ~/.npmrc
 
       # - name: Install dependencies
       #   run: npm install
@@ -37,9 +37,9 @@ jobs:
       - name: Publish to npmjs.org
         run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${ secrets.NPM_TOKEN }
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to GitHub Packages
         run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${ secrets.GH_PACKAGES_TOKEN }
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
