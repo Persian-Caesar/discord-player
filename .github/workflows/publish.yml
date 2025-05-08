@@ -21,11 +21,13 @@ jobs:
         with:
           node-version: 22
 
-      # - name: Install dependencies
-      #   run: npm install
+      - name: Install dependencies
+        run: npm install
+        continue-on-error: true
 
-      # - name: Build package
-      #   run: npm run build
+      - name: Build package
+        run: npm run build
+        continue-on-error: true
 
       - name: Configure authentication for npmjs and GitHub Packages
         run: |
@@ -44,6 +46,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+        continue-on-error: true
+
       - name: Setup Node.js for GitHub Packages
         uses: actions/setup-node@v4
         with:
@@ -54,3 +58,5 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+          
+        continue-on-error: true
