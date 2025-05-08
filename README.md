@@ -23,7 +23,7 @@ npm install --save @persian-caesar/discord-player
 > This package provides the player and its types. You still need to install the actual playback libraries as peer dependencies:
 
 ```bash
-npm install @discordjs/voice ytdl-core-discord ytdl-core play-dl @distube/ytdl-core soundcloud-downloader
+npm install @discordjs/voice ytdl-core-discord ytdl-core play-dl @distube/ytdl-core soundcloud-downloader ffmpeg-static @discordjs/opus libsodium-wrappers
 ```
 
 ---
