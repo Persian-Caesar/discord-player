@@ -33,21 +33,25 @@ jobs:
       # - name: Build package
       #   run: npm run build
 
-      - name: Publish to npmjs.org
+      - name: Setup Node.js for npmjs
         uses: actions/setup-node@v4
         with:
           node-version: 22
           registry-url: 'https://registry.npmjs.org/'
 
+      - name: Publish to npmjs.org
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish to GitHub Packages
+
+      - name: Setup Node.js for npmjs
         uses: actions/setup-node@v4
         with:
+          node-version: 22
           registry-url: 'https://npm.pkg.github.com/'
-
+          
+      - name: Publish to GitHub Packages
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
