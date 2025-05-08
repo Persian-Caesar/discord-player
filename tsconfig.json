@@ -114,6 +114,7 @@
     "node_modules"
   ],
   "include": [
-    "src"
-, "src/types.ts"  ]
+    "src", 
+    "src/types.ts"  
+  ]
 }

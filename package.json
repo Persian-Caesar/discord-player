@@ -1,6 +1,6 @@
 {
   "name": "@persian-caesar/discord-player",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Type definitions and helpers for a Discord music player (MusicPlayer) without external dependencies",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -37,8 +37,10 @@
     "node": ">=16"
   },
   "dependencies": {
+    "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.18.0",
     "@distube/ytdl-core": "^4.16.10",
+    "libsodium-wrappers": "^0.7.15",
     "play-dl": "^1.9.7",
     "soundcloud-downloader": "^1.0.0",
     "ytdl-core": "^4.11.5",
