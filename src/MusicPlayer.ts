@@ -411,6 +411,10 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         return this.playing;
     }
 
+    public isPaused(): boolean {
+        return this.player && this.player.state.status === AudioPlayerStatus.Paused;
+    }
+
     private createError(message: string) {
         class discordPlayerError extends Error {
             constructor() {
