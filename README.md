@@ -37,13 +37,13 @@ import type { VoiceChannel } from "@persian-caesar/discord-player";
 // Assume you already have a VoiceChannel object:
 const voiceChannel: VoiceChannel = /* your voice channel instance */;
 
-const player = new MusicPlayer(voiceChannel, 0.5, {
+const player = new MusicPlayer(voiceChannel, 50, {
   autoLeaveOnEmptyQueue: true,
   autoLeaveOnIdleMs: 300_000,
 });
 
 // Listen for events
-player.on(MusicPlayerEvent.Start, ({ url, history }) => {
+player.on(MusicPlayerEvent.Start, ({ url, history, metadata }) => {
   console.log(`▶️ Now playing: ${url}`);
 });
 
@@ -77,12 +77,12 @@ const { MusicPlayer, MusicPlayerEvent } = require("@persian-caesar/discord-playe
  */
 const voiceChannel = /* your voice channel instance */;
 
-const player = new MusicPlayer(voiceChannel, 0.5, {
+const player = new MusicPlayer(voiceChannel, 50, {
   autoLeaveOnEmptyQueue: true,
-  autoLeaveOnIdleMs: 300000,
+  autoLeaveOnIdleMs: 300_000,
 });
 
-player.on(MusicPlayerEvent.Start, ({ url, history }) => {
+player.on(MusicPlayerEvent.Start, ({ url, history, metadata }) => {
   console.log("▶️ Now playing:", url);
 });
 
@@ -100,13 +100,13 @@ player.play("https://youtu.be/dQw4w9WgXcQ");
 ```ts
 new MusicPlayer(
   channel: VoiceChannel,
-  initialVolume?: number,        // default: 0.5
+  initialVolume?: number,        // default: 100 => 100%
   options?: MusicPlayerOptions,  // { autoLeaveOnEmptyQueue?: boolean, autoLeaveOnIdleMs?: number }
 )
 ```
 
 * `autoLeaveOnEmptyQueue` (default `true`): automatically disconnect when queue ends
-* `autoLeaveOnIdleMs` (default `300_000` ms): time before auto-disconnect on idle
+* `autoLeaveOnIdleMs` (default `5 * 60_000` ms): time before auto-disconnect on idle
 
 #### Methods
 
@@ -153,12 +153,12 @@ Each event emits a strongly-typed payload:
 
 ```ts
 // examples of payload shapes
-Start         → { url: string; history: string[] }
-QueueAdd      → { url: string; queue: string[] }
+Start         → { url: string; history: string[]; metadata: TrackMetadata; }
+QueueAdd      → { url: string; queue: TrackMetadata[] }
 Pause/Resume  → no payload
 VolumeChange  → { volume: number }
 Skip/Previous → { history: string[] }
-Shuffle       → { queue: string[] }
+Shuffle       → { queue: TrackMetadata[] }
 LoopQueue/Track → { enabled: boolean }
 Finish        → { history: string[] }
 Disconnect    → no payload

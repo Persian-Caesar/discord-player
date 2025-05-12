@@ -159,35 +159,53 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     }
 
     private async fetchMetadata(url: string): Promise<TrackMetadata> {
-        // YouTube
-        if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url)) {
-            const info = await ytdl_core.getInfo(url);
-            const details = info.videoDetails;
-            return {
-                title: details.title,
-                author: details.author.name,
-                duration: parseInt(details.lengthSeconds, 10),
-                thumbnail: details.thumbnails[details.thumbnails.length - 1].url,
-                source: "youtube",
-                url
-            };
-        }
-
-        // SoundCloud
-        if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(url)) {
-            const info = await scdl.getInfo(url);
-            return {
-                title: info.title,
-                author: info.user?.username,
-                duration: Math.floor(info.duration! / 1000),
-                thumbnail: info.artwork_url || info.user?.avatar_url,
-                source: "soundcloud",
-                url
-            };
-        }
-
-        // Other sources can be added similarly with playdl
         try {
+            // YouTube
+            if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url)) {
+                let info: ytdl.videoInfo | ytdl_core.videoInfo | undefined;
+                try { info = await ytdl.getBasicInfo(url); } catch { };
+
+                if (!info)
+                    try { info = await ytdl_core.getBasicInfo(url); } catch { };
+
+                if (!info)
+                    try { info = await ytdl_core_discord.getBasicInfo(url); } catch { }
+
+                if (!info)
+                    return {
+                        title: undefined,
+                        author: undefined,
+                        duration: undefined,
+                        thumbnail: undefined,
+                        source: "unknown",
+                        url
+                    };
+
+                const details = info.videoDetails;
+                return {
+                    title: details.title,
+                    author: details.author.name,
+                    duration: parseInt(details.lengthSeconds, 10),
+                    thumbnail: details.thumbnails[details.thumbnails.length - 1].url,
+                    source: "youtube",
+                    url
+                };
+            }
+
+            // SoundCloud
+            if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(url)) {
+                const info = await scdl.getInfo(url);
+                return {
+                    title: info.title,
+                    author: info.user?.username,
+                    duration: Math.floor(info.duration! / 1000),
+                    thumbnail: info.artwork_url || info.user?.avatar_url,
+                    source: "soundcloud",
+                    url
+                };
+            }
+
+            // Other sources can be added similarly with playdl
             const result = await playdl.video_basic_info(url);
             const vid = result.video_details;
             return {
