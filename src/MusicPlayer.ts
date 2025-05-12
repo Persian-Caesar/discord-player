@@ -12,7 +12,8 @@ import {
 import {
     VoiceChannel,
     TypedEmitter,
-    MusicPlayerEvent
+    MusicPlayerEvent,
+    TrackMetadata
 } from "./types";
 import type { Stream } from "stream";
 import ytdl_core_discord from "ytdl-core-discord";
@@ -31,7 +32,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     private connection: VoiceConnection | null = null;
     private player: AudioPlayer;
     private volume: number;
-    private queue: string[] = [];
+    private queue: TrackMetadata[] = [];
     private history: string[] = [];
     private loopQueue = false;
     private loopTrack = false;
@@ -42,13 +43,13 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
     constructor(
         private channel: VoiceChannel,
-        initialVolume = 0.5,
+        initialVolume = 100,
         options: MusicPlayerOptions = {}
     ) {
         super();
 
         this.player = createAudioPlayer();
-        this.volume = initialVolume;
+        this.volume = Math.round(initialVolume / 100);
 
         this.autoLeaveOnEmptyQueue = options.autoLeaveOnEmptyQueue ?? true;
         this.autoLeaveOnIdleMs = options.autoLeaveOnIdleMs ?? 5 * 60_000;
@@ -157,9 +158,63 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         return yt.stream;
     }
 
-    private async playUrl(url: string) {
+    private async fetchMetadata(url: string): Promise<TrackMetadata> {
+        // YouTube
+        if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url)) {
+            const info = await ytdl_core.getInfo(url);
+            const details = info.videoDetails;
+            return {
+                title: details.title,
+                author: details.author.name,
+                duration: parseInt(details.lengthSeconds, 10),
+                thumbnail: details.thumbnails[details.thumbnails.length - 1].url,
+                source: "youtube",
+                url
+            };
+        }
+
+        // SoundCloud
+        if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(url)) {
+            const info = await scdl.getInfo(url);
+            return {
+                title: info.title,
+                author: info.user?.username,
+                duration: Math.floor(info.duration! / 1000),
+                thumbnail: info.artwork_url || info.user?.avatar_url,
+                source: "soundcloud",
+                url
+            };
+        }
+
+        // Other sources can be added similarly with playdl
+        try {
+            const result = await playdl.video_basic_info(url);
+            const vid = result.video_details;
+            return {
+                title: vid.title,
+                author: vid.channel?.name,
+                duration: vid.durationInSec,
+                thumbnail: vid.thumbnails?.[0]?.url,
+                source: "unknown",
+                url
+            };
+        } catch {
+            return {
+                title: undefined,
+                author: undefined,
+                duration: undefined,
+                thumbnail: undefined,
+                source: "unknown",
+                url
+            };
+        }
+    }
+
+    private async playUrl(url: string, metadata: TrackMetadata) {
         this.playing = true;
         this.history.push(url);
+
+        // Create audio stream as before
         let stream: Stream.Readable | null = null;
         if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(url))
             try { stream = await this.createStreamFromScdl(url); } catch { };
@@ -178,22 +233,23 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         if (!(this.player.state as AudioPlayerPlayingState).resource)
             (this.player.state as AudioPlayerPlayingState).resource = resource;
 
-        this.emit(MusicPlayerEvent.Start, { url, history: [...this.history] });
-        return
+        this.emit(MusicPlayerEvent.Start, { url, history: [...this.history], metadata });
+        return;
     }
 
     public async play(input: string) {
         await this.ensureConnection();
         const url = await this.search(input);
+        const metadata = await this.fetchMetadata(url);
 
         if (this.playing) {
-            this.queue.push(url);
+            this.queue.push(metadata);
             this.emit(MusicPlayerEvent.QueueAdd, { url, queue: [...this.queue] });
             return undefined;
         }
 
         else
-            return await this.playUrl(url);
+            return await this.playUrl(url, metadata);
 
     }
 
@@ -224,14 +280,17 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     }
 
     private async onIdle() {
+        const url = this.history[this.history.length - 1];
+        const metadata = await this.fetchMetadata(url);
         if (this.loopTrack)
-            return await this.playUrl(this.history[this.history.length - 1]);
+            return await this.playUrl(url, metadata);
 
         if (this.queue.length) {
             const next = this.queue.shift()!;
             if (this.loopQueue) this.queue.push(next);
 
-            return await this.playUrl(next);
+            const metadata = await this.fetchMetadata(next.url);
+            return await this.playUrl(next.url, metadata);
         }
 
         this.playing = false;
@@ -252,16 +311,18 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         this.player.stop();
     }
 
-    public previous() {
+    public async previous() {
         if (this.history.length < 2) {
             this.emit(MusicPlayerEvent.Error, this.createError("No track to previous."));
             return;
         }
 
         this.emit(MusicPlayerEvent.Previous, { history: [...this.history] });
-        this.queue.unshift(this.history.pop()!);
+        this.queue.unshift(this.queue.find(a => a.url === this.history.pop())!);
         const prev = this.history.pop()!;
-        this.playUrl(prev);
+
+        const metadata = await this.fetchMetadata(prev);
+        this.playUrl(prev, metadata);
     }
 
     public shuffle() {
@@ -326,6 +387,10 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         return Math.round(
             this.volume * 100
         );
+    }
+
+    public isPlaying(): boolean {
+        return this.playing;
     }
 
     private createError(message: string) {

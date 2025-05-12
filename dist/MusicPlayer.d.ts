@@ -1,4 +1,4 @@
-import { VoiceChannel, TypedEmitter } from "./types";
+import { VoiceChannel, TypedEmitter, TrackMetadata } from "./types";
 import EventEmitter from "events";
 export interface MusicPlayerOptions {
     autoLeaveOnEmptyQueue?: boolean;
@@ -25,6 +25,7 @@ export declare class MusicPlayer extends EventEmitter<TypedEmitter> {
     private createStreamFromScdl;
     private createStreamFromYtdl;
     private createStreamFromPlayDl;
+    private fetchMetadata;
     private playUrl;
     play(input: string): Promise<void>;
     pause(): void;
@@ -32,7 +33,7 @@ export declare class MusicPlayer extends EventEmitter<TypedEmitter> {
     setVolume(percent: number): void;
     private onIdle;
     skip(): void;
-    previous(): void;
+    previous(): Promise<void>;
     shuffle(): void;
     toggleLoopQueue(): void;
     isLoopQueue(): boolean;
@@ -40,8 +41,9 @@ export declare class MusicPlayer extends EventEmitter<TypedEmitter> {
     isLoopTrack(): boolean;
     disconnect(): void;
     stop(noLeave?: boolean): void;
-    getQueue(): string[];
+    getQueue(): TrackMetadata[];
     getVolume(): number;
+    isPlaying(): boolean;
     private createError;
 }
 /**

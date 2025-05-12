@@ -13,7 +13,7 @@ const play_dl_1 = __importDefault(require("play-dl"));
 const ytdl_core_2 = __importDefault(require("@distube/ytdl-core"));
 const soundcloud_downloader_1 = __importDefault(require("soundcloud-downloader"));
 class MusicPlayer extends events_1.default {
-    constructor(channel, initialVolume = 0.5, options = {}) {
+    constructor(channel, initialVolume = 100, options = {}) {
         var _a, _b;
         super();
         this.channel = channel;
@@ -25,7 +25,7 @@ class MusicPlayer extends events_1.default {
         this.playing = false;
         this.idleTimer = null;
         this.player = (0, voice_1.createAudioPlayer)();
-        this.volume = initialVolume;
+        this.volume = Math.round(initialVolume / 100);
         this.autoLeaveOnEmptyQueue = (_a = options.autoLeaveOnEmptyQueue) !== null && _a !== void 0 ? _a : true;
         this.autoLeaveOnIdleMs = (_b = options.autoLeaveOnIdleMs) !== null && _b !== void 0 ? _b : 5 * 60000;
         this.player.on("error", err => {
@@ -63,14 +63,15 @@ class MusicPlayer extends events_1.default {
                 await (0, voice_1.entersState)(this.connection, voice_1.VoiceConnectionStatus.Ready, 20000);
                 this.connection.subscribe(this.player);
             }
-            catch {
+            catch (err) {
                 this.connection.destroy();
                 this.connection = null;
-                this.emit(types_1.MusicPlayerEvent.Error, this.createError("Can't connect to the voice channel."));
+                this.emit(types_1.MusicPlayerEvent.Error, this.createError("Can't connect to the voice channel. => " + err.message));
             }
         }
     }
     async search(query) {
+        var _a, _b, _c;
         if (/^https?:\/\//.test(query))
             return query;
         // soundcloud
@@ -79,7 +80,7 @@ class MusicPlayer extends events_1.default {
             resourceType: "tracks",
             limit: 1
         });
-        let url = sc_results.collection[0].permalink_url;
+        let url = (_b = (_a = sc_results.collection) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.permalink_url;
         if (!url) {
             // spotify youtube and also soundcloud
             const playdl_results = await play_dl_1.default.search(query, {
@@ -91,7 +92,7 @@ class MusicPlayer extends events_1.default {
                     deezer: "track"
                 }
             });
-            url = playdl_results[0].url;
+            url = (_c = playdl_results[0]) === null || _c === void 0 ? void 0 : _c.url;
         }
         return url;
     }
@@ -125,10 +126,62 @@ class MusicPlayer extends events_1.default {
             return null;
         return yt.stream;
     }
-    async playUrl(url) {
+    async fetchMetadata(url) {
+        var _a, _b, _c, _d, _e;
+        // YouTube
+        if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url)) {
+            const info = await ytdl_core_1.default.getInfo(url);
+            const details = info.videoDetails;
+            return {
+                title: details.title,
+                author: details.author.name,
+                duration: parseInt(details.lengthSeconds, 10),
+                thumbnail: details.thumbnails[details.thumbnails.length - 1].url,
+                source: "youtube",
+                url
+            };
+        }
+        // SoundCloud
+        if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(url)) {
+            const info = await soundcloud_downloader_1.default.getInfo(url);
+            return {
+                title: info.title,
+                author: (_a = info.user) === null || _a === void 0 ? void 0 : _a.username,
+                duration: Math.floor(info.duration / 1000),
+                thumbnail: info.artwork_url || ((_b = info.user) === null || _b === void 0 ? void 0 : _b.avatar_url),
+                source: "soundcloud",
+                url
+            };
+        }
+        // Other sources can be added similarly with playdl
+        try {
+            const result = await play_dl_1.default.video_basic_info(url);
+            const vid = result.video_details;
+            return {
+                title: vid.title,
+                author: (_c = vid.channel) === null || _c === void 0 ? void 0 : _c.name,
+                duration: vid.durationInSec,
+                thumbnail: (_e = (_d = vid.thumbnails) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.url,
+                source: "unknown",
+                url
+            };
+        }
+        catch {
+            return {
+                title: undefined,
+                author: undefined,
+                duration: undefined,
+                thumbnail: undefined,
+                source: "unknown",
+                url
+            };
+        }
+    }
+    async playUrl(url, metadata) {
         var _a;
         this.playing = true;
         this.history.push(url);
+        // Create audio stream as before
         let stream = null;
         if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(url))
             try {
@@ -155,19 +208,20 @@ class MusicPlayer extends events_1.default {
         this.player.play(resource);
         if (!this.player.state.resource)
             this.player.state.resource = resource;
-        this.emit(types_1.MusicPlayerEvent.Start, { url, history: [...this.history] });
+        this.emit(types_1.MusicPlayerEvent.Start, { url, history: [...this.history], metadata });
         return;
     }
     async play(input) {
         await this.ensureConnection();
         const url = await this.search(input);
+        const metadata = await this.fetchMetadata(url);
         if (this.playing) {
-            this.queue.push(url);
+            this.queue.push(metadata);
             this.emit(types_1.MusicPlayerEvent.QueueAdd, { url, queue: [...this.queue] });
             return undefined;
         }
         else
-            return await this.playUrl(url);
+            return await this.playUrl(url, metadata);
     }
     pause() {
         this.player.pause();
@@ -191,13 +245,16 @@ class MusicPlayer extends events_1.default {
         this.emit(types_1.MusicPlayerEvent.VolumeChange, { volume: Math.round(this.volume * 100) });
     }
     async onIdle() {
+        const url = this.history[this.history.length - 1];
+        const metadata = await this.fetchMetadata(url);
         if (this.loopTrack)
-            return await this.playUrl(this.history[this.history.length - 1]);
+            return await this.playUrl(url, metadata);
         if (this.queue.length) {
             const next = this.queue.shift();
             if (this.loopQueue)
                 this.queue.push(next);
-            return await this.playUrl(next);
+            const metadata = await this.fetchMetadata(next.url);
+            return await this.playUrl(next.url, metadata);
         }
         this.playing = false;
         this.emit(types_1.MusicPlayerEvent.Finish, { history: [...this.history] });
@@ -213,15 +270,16 @@ class MusicPlayer extends events_1.default {
         this.emit(types_1.MusicPlayerEvent.Skip, { history: [...this.history] });
         this.player.stop();
     }
-    previous() {
+    async previous() {
         if (this.history.length < 2) {
             this.emit(types_1.MusicPlayerEvent.Error, this.createError("No track to previous."));
             return;
         }
         this.emit(types_1.MusicPlayerEvent.Previous, { history: [...this.history] });
-        this.queue.unshift(this.history.pop());
+        this.queue.unshift(this.queue.find(a => a.url === this.history.pop()));
         const prev = this.history.pop();
-        this.playUrl(prev);
+        const metadata = await this.fetchMetadata(prev);
+        this.playUrl(prev, metadata);
     }
     shuffle() {
         for (let i = this.queue.length - 1; i > 0; i--) {
@@ -274,6 +332,9 @@ class MusicPlayer extends events_1.default {
             return Math.round(resource.volume.volume * 100);
         return Math.round(this.volume * 100);
     }
+    isPlaying() {
+        return this.playing;
+    }
     createError(message) {
         class discordPlayerError extends Error {
             constructor() {
@@ -294,3 +355,4 @@ exports.MusicPlayer = MusicPlayer;
  * If you encounter any issues or need assistance with this code,
  * please make sure to credit "Persian Caesar" in your documentation or communications.
  */ 
+//# sourceMappingURL=MusicPlayer.js.map

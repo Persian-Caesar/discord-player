@@ -16,12 +16,12 @@ export enum MusicPlayerEvent {
 }
 
 
-export interface StartPayload { url: string; history: string[] }
-export interface QueueAddPayload { url: string; queue: string[] }
+export interface StartPayload { url: string; history: string[]; metadata: TrackMetadata; }
+export interface QueueAddPayload { url: string; queue: TrackMetadata[] }
 export interface VolumeChangePayload { volume: number }
 export interface SkipPayload { history: string[] }
 export interface PreviousPayload { history: string[] }
-export interface ShufflePayload { queue: string[] }
+export interface ShufflePayload { queue: TrackMetadata[] }
 export interface LoopTogglePayload { enabled: boolean }
 export interface FinishPayload { history: string[] }
 
@@ -49,6 +49,15 @@ export interface VoiceChannel {
         id: string;
         voiceAdapterCreator: any;
     };
+}
+
+export interface TrackMetadata {
+    title: string | undefined;
+    author: string | undefined;
+    duration: number | undefined; // seconds
+    thumbnail: string | undefined;
+    source: "youtube" | "soundcloud" | "spotify" | "deezer" | "unknown";
+    url: string;
 }
 /**
  * @copyright
