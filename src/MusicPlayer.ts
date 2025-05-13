@@ -15,6 +15,7 @@ import {
     MusicPlayerEvent,
     TrackMetadata
 } from "./types";
+import { htmlToText } from "html-to-text";
 import type { Stream } from "stream";
 import ytdl_core_discord from "ytdl-core-discord";
 import EventEmitter from "events";
@@ -28,7 +29,13 @@ export interface MusicPlayerOptions {
     autoLeaveOnIdleMs?: number;
 }
 
+/**
+ * MusicPlayer
+ *  - Manages voice connection, playback, queue, history, and loop modes
+ *  - Emits events defined in MusicPlayerEvent
+ */
 export class MusicPlayer extends EventEmitter<TypedEmitter> {
+    private previousQueueOrder: TrackMetadata[] = [];
     private connection: VoiceConnection | null = null;
     private player: AudioPlayer;
     private volume: number;
@@ -40,14 +47,21 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     private autoLeaveOnEmptyQueue: boolean;
     private autoLeaveOnIdleMs: number;
     private idleTimer: NodeJS.Timeout | null = null;
+    private shuffield: boolean = false;
 
+    /**
+     * @param channel   The Discord voice channel to connect to
+     * @param initialVolume  Initial volume in percent (0–100)
+     * @param options   Configuration options (auto-leave, idle timeout)
+     */
     constructor(
-        private channel: VoiceChannel,
+        public channel: VoiceChannel,
         initialVolume = 100,
         options: MusicPlayerOptions = {}
     ) {
         super();
 
+        // create the audio player and set volume
         this.player = createAudioPlayer();
         this.volume = Math.round(initialVolume / 100);
 
@@ -73,6 +87,62 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         return;
     }
 
+    /**
+     * Search Google and scrape lyrics snippets.
+     * Returns the lyrics or null if not found.
+     *
+     * @param title   Song title
+     * @param artist  Optional artist name, for more accurate search
+     */
+    public async searchLyrics(title: string, artist?: string): Promise<string | null> {
+        const delim1 = '</div></div></div></div><div class="hwc"><div class="BNeawe tAd8D AP7Wnd"><div><div class="BNeawe tAd8D AP7Wnd">';
+        const delim2 = '</div></div></div></div></div><div><span class="hwc"><div class="BNeawe uEec3 AP7Wnd">';
+        const GOOGLE = "https://www.google.com/search?q=";
+        let html: string = "";
+        const query = encodeURIComponent(`${artist ? artist + " " : ""}${title}`);
+
+        // build multiple query URLs with different suffixes    
+        const attempts = [
+            `${GOOGLE}${query}+lyrics`,
+            `${GOOGLE}${query}+song+lyrics`,
+            `${GOOGLE}${query}+song`,
+            `${GOOGLE}${query}`
+        ];
+
+        for (const url of attempts) {
+            try {
+                // fetch HTML, split by known delimiters, then strip tags
+                const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+                html = await res.text();
+                break;
+            } catch {
+                continue;
+            }
+        }
+
+        if (!html) return null;
+
+        let snippet: string;
+        try {
+            [, snippet] = html.split(delim1);
+            [snippet] = snippet.split(delim2);
+        } catch {
+            return null;
+        }
+
+        const rawLines = snippet.split("\n");
+        let lyrics = "";
+        for (const line of rawLines) {
+            lyrics += htmlToText(line).trim() + "\n";
+        }
+
+        // lyrics = Buffer.from(lyrics, "binary").toString("utf8").trim();
+        lyrics = lyrics.trim();
+
+        return lyrics || null;
+    }
+
+
     private clearIdleTimer() {
         if (this.idleTimer) {
             clearTimeout(this.idleTimer);
@@ -83,7 +153,12 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         return;
     }
 
+    /**
+     * Connect to the voice channel if not already connected.
+     * Waits until the connection is READY or emits an error.
+     */
     private async ensureConnection() {
+        // joinVoiceChannel will handle reconnection automatically
         if (!this.connection) {
             this.connection = joinVoiceChannel({
                 channelId: this.channel.id,
@@ -98,9 +173,12 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 );
                 this.connection.subscribe(this.player);
             } catch (err: any) {
+                // clean up on failure
                 this.connection.destroy();
                 this.connection = null;
-                this.emit(MusicPlayerEvent.Error, this.createError("Can't connect to the voice channel. => " + err.message));
+                this.emit(MusicPlayerEvent.Error,
+                    this.createError("Can't connect to the voice channel. => " + err.message)
+                );
             }
         }
     }
@@ -251,22 +329,39 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         if (!(this.player.state as AudioPlayerPlayingState).resource)
             (this.player.state as AudioPlayerPlayingState).resource = resource;
 
-        this.emit(MusicPlayerEvent.Start, { url, history: [...this.history], metadata });
+        this.emit(MusicPlayerEvent.Start, {
+            metadata,
+            queue: [...this.queue]
+        });
         return;
     }
 
+    /**
+     * Play a song by query or URL.
+     * If already playing, adds to queue and emits a queueAdd event.
+     * Otherwise, starts immediate playback via playUrl().
+     *
+     * @param input  YouTube URL or search query (e.g. “Coldplay Yellow”)
+     */
     public async play(input: string) {
         await this.ensureConnection();
+
+        // resolve to a URL, then fetch metadata
         const url = await this.search(input);
         const metadata = await this.fetchMetadata(url);
 
         if (this.playing) {
+            // enqueue and notify
             this.queue.push(metadata);
-            this.emit(MusicPlayerEvent.QueueAdd, { url, queue: [...this.queue] });
-            return undefined;
+            this.emit(MusicPlayerEvent.QueueAdd, {
+                metadata,
+                queue: [...this.queue]
+            });
+            return;
         }
 
         else
+            // start playback immediately
             return await this.playUrl(url, metadata);
 
     }
@@ -297,6 +392,12 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         this.emit(MusicPlayerEvent.VolumeChange, { volume: Math.round(this.volume * 100) });
     }
 
+    /**
+     * Handle when the player becomes idle.
+     * - If loopTrack is on, replay current track
+     * - Else if queue has items, play next
+     * - Otherwise, emit finish and optionally disconnect
+     */
     private async onIdle() {
         const url = this.history[this.history.length - 1];
         const metadata = await this.fetchMetadata(url);
@@ -312,7 +413,10 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         }
 
         this.playing = false;
-        this.emit(MusicPlayerEvent.Finish, { history: [...this.history] });
+        this.emit(MusicPlayerEvent.Finish, {
+            queue: [...this.queue],
+            history: [...this.history]
+        });
         if (this.autoLeaveOnEmptyQueue) {
             this.emit(MusicPlayerEvent.Disconnect);
             this.disconnect();
@@ -325,29 +429,75 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     }
 
     public skip() {
-        this.emit(MusicPlayerEvent.Skip, { history: [...this.history] });
+        this.emit(MusicPlayerEvent.Skip, { queue: [...this.queue], history: [...this.history] });
         this.player.stop();
     }
 
+    /**
+     * Jump to the previous track.
+     * Pops current and last URLs from history, re-queues the current,
+     * and starts playback of the previous one.
+     */
     public async previous() {
         if (this.history.length < 2) {
             this.emit(MusicPlayerEvent.Error, this.createError("No track to previous."));
             return;
         }
 
-        this.emit(MusicPlayerEvent.Previous, { history: [...this.history] });
-        this.queue.unshift(this.queue.find(a => a.url === this.history.pop())!);
-        const prev = this.history.pop()!;
+        // Remove current URL
+        this.history.pop();
 
-        const metadata = await this.fetchMetadata(prev);
-        this.playUrl(prev, metadata);
+        // Get the one before it
+        const prevUrl = this.history.pop()!;
+        const metadata = await this.fetchMetadata(prevUrl);
+
+        // Re-insert into the front of the queue
+        this.queue.unshift(metadata);
+
+        // Notify listeners with updated state
+        this.emit(MusicPlayerEvent.Previous, {
+            metadata,
+            queue: [...this.queue],
+            history: [...this.history, prevUrl]
+        });
+
+        // Play the previous track
+        await this.playUrl(prevUrl, metadata);
+        return;
     }
 
+    /**
+     * Shuffle the queue randomly.
+     * Saves the current queue order so you can undo.
+     */
     public shuffle() {
+        // Backup before shuffle
+        this.previousQueueOrder = [...this.queue];
         for (let i = this.queue.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [this.queue[i], this.queue[j]] = [this.queue[j], this.queue[i]];
         }
+
+        this.shuffield = true;
+        this.emit(MusicPlayerEvent.Shuffle, {
+            queue: [...this.queue]
+        });
+    }
+
+    /**
+     * Restore the queue to its previous order,
+     * excluding any tracks that have already been played.
+     */
+    public undoShuffle() {
+        // Filter out URLs already in history
+        this.queue = this.previousQueueOrder.filter(
+            meta => !this.history.includes(meta.url)
+        );
+
+        this.shuffield = false;
+        this.emit(MusicPlayerEvent.Shuffle, {
+            queue: [...this.queue]
+        });
     }
 
     public toggleLoopQueue() {
@@ -415,6 +565,11 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         return this.player && this.player.state.status === AudioPlayerStatus.Paused;
     }
 
+    public isShuffiled(): boolean {
+        return this.shuffield;
+    }
+
+    // Custom error class
     private createError(message: string) {
         class discordPlayerError extends Error {
             constructor() {

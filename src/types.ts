@@ -16,14 +16,14 @@ export enum MusicPlayerEvent {
 }
 
 
-export interface StartPayload { url: string; history: string[]; metadata: TrackMetadata; }
-export interface QueueAddPayload { url: string; queue: TrackMetadata[] }
+export interface StartPayload { metadata: TrackMetadata; queue: TrackMetadata[]; }
+export interface QueueAddPayload { metadata: TrackMetadata; queue: TrackMetadata[] }
 export interface VolumeChangePayload { volume: number }
-export interface SkipPayload { history: string[] }
-export interface PreviousPayload { history: string[] }
+export interface SkipPayload { queue: TrackMetadata[]; history: string[]; }
+export interface PreviousPayload { metadata: TrackMetadata; queue: TrackMetadata[]; history: string[]; }
 export interface ShufflePayload { queue: TrackMetadata[] }
 export interface LoopTogglePayload { enabled: boolean }
-export interface FinishPayload { history: string[] }
+export interface FinishPayload { queue: TrackMetadata[]; history: string[]; }
 
 export type TypedEmitter = {
     "start": [StartPayload];
