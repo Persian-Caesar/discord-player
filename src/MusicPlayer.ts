@@ -307,6 +307,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     }
 
     private async playUrl(url: string, metadata: TrackMetadata) {
+        this.playing = true;
         this.history.push(url);
 
         // Create audio stream as before
@@ -325,16 +326,13 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         const resource = createAudioResource(stream!, { inlineVolume: true });
         resource.volume?.setVolume(this.volume);
         this.player.play(resource);
-        this.playing = true;
+        if (!(this.player.state as AudioPlayerPlayingState).resource)
+            (this.player.state as AudioPlayerPlayingState).resource = resource;
 
         this.emit(MusicPlayerEvent.Start, {
             metadata,
             queue: [...this.queue]
         });
-
-        if (!(this.player.state as AudioPlayerPlayingState).resource)
-            (this.player.state as AudioPlayerPlayingState).resource = resource;
-
         return;
     }
 
