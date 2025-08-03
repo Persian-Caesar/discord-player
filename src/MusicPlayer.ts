@@ -13,7 +13,8 @@ import {
     VoiceChannel,
     TypedEmitter,
     MusicPlayerEvent,
-    TrackMetadata
+    TrackMetadata,
+    MusicPlayerOptions
 } from "./types";
 import { htmlToText } from "html-to-text";
 import type { Stream } from "stream";
@@ -24,16 +25,12 @@ import playdl from "play-dl";
 import ytdl from "@distube/ytdl-core";
 import scdl from "soundcloud-downloader";
 
-export interface MusicPlayerOptions {
-    autoLeaveOnEmptyQueue?: boolean;
-    autoLeaveOnIdleMs?: number;
-}
-
 /**
  * Manages voice connection, playback, queue, history, and loop modes.
  * Emits events defined in MusicPlayerEvent.
  */
 export class MusicPlayer extends EventEmitter<TypedEmitter> {
+    // Player main data
     private previousQueueOrder: TrackMetadata[] = [];
     private connection: VoiceConnection | null = null;
     private player: AudioPlayer;
@@ -47,8 +44,21 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     private autoLeaveOnIdleMs: number;
     private idleTimer: NodeJS.Timeout | null = null;
     private shuffield: boolean = false;
+
+    // Radio
     private radioMode: boolean = false;
     private radioUrls: string[] = [];
+
+    // Connection
+    private connectionData: {
+        channelId: string;
+        guildId: string;
+        adapterCreator: any;
+        selfDeaf?: boolean;
+        selfMute?: boolean;
+        group?: string;
+        debug?: boolean;
+    } | null = null;
 
     /**
      * Initializes a new MusicPlayer instance.
@@ -66,13 +76,81 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         this.volume = Math.round(initialVolume / 100); // Converts volume from percentage (0–100) to decimal (0–1)
         this.autoLeaveOnEmptyQueue = options.autoLeaveOnEmptyQueue ?? true; // Default: leave voice channel when queue is empty
         this.autoLeaveOnIdleMs = options.autoLeaveOnIdleMs ?? 5 * 60_000; // Default: 5-minute idle timeout before disconnecting
-        
+
+        this.connectionData = {
+            channelId: channel.id,
+            guildId: channel.guild.id,
+            adapterCreator: channel.guild.voiceAdapterCreator,
+            selfDeaf: true,
+            selfMute: false,
+            debug: false
+        };
+
         // Set up event listeners for error handling, idle state, and playback start
         this.player.on("error", err => {
             this.emit(MusicPlayerEvent.Error, this.createError("Player have error => " + err.message));
         });
         this.player.on(AudioPlayerStatus.Idle, () => this.onIdle()); // Triggers when no audio is playing
         this.player.on(AudioPlayerStatus.Playing, () => this.clearIdleTimer()); // Clears idle timer when music starts
+    }
+
+
+    /**
+     * Sets the connection data for the voice channel.
+     * @param data - Connection settings.
+     * @returns The current MusicPlayer instance.
+     */
+    public setData(data: {
+        channelId: string;
+        guildId: string;
+        adapterCreator: any;
+        selfDeaf?: boolean;
+        selfMute?: boolean;
+        group?: string;
+        debug?: boolean;
+    }) {
+        this.connectionData = {
+            ...data,
+            selfDeaf: data.selfDeaf ?? true,
+            selfMute: data.selfMute ?? false,
+            debug: data.debug ?? false
+        };
+
+        return this;
+    }
+
+
+    /**
+     * Joins the voice channel using provided or stored connection data.
+     * @param data - Optional connection settings; uses stored data if not provided.
+     * @returns The VoiceConnection instance.
+     */
+    public join(data?: {
+        channelId: string;
+        guildId: string;
+        adapterCreator: any;
+        selfDeaf?: boolean;
+        selfMute?: boolean;
+        group?: string;
+        debug?: boolean;
+    }): VoiceConnection {
+        if (!data && !this.connectionData) {
+            throw this.createError("No connection data available to join voice channel.");
+        }
+        const connectionData = data || this.connectionData!;
+        this.connection = joinVoiceChannel({
+            channelId: connectionData.channelId,
+            guildId: connectionData.guildId,
+            adapterCreator: connectionData.adapterCreator,
+            selfDeaf: connectionData.selfDeaf ?? true,
+            selfMute: connectionData.selfMute ?? false,
+            group: connectionData.group,
+            debug: connectionData.debug
+        });
+
+        this.connection.subscribe(this.player);
+
+        return this.connection;
     }
 
     /**
@@ -108,25 +186,35 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             try {
                 const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
                 html = await res.text();
+
                 break;
-            } catch {
+            }
+
+            catch {
                 continue;
             }
         }
+
         if (!html) return null;
+
         let snippet: string;
         try {
             [, snippet] = html.split(delim1);
             [snippet] = snippet.split(delim2);
-        } catch {
+        }
+
+        catch {
             return null;
         }
+
         const rawLines = snippet.split("\n");
         let lyrics = "";
         for (const line of rawLines) {
             lyrics += htmlToText(line).trim() + "\n";
         }
+
         lyrics = lyrics.trim();
+
         return lyrics || null;
     }
 
@@ -141,6 +229,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             const j = Math.floor(Math.random() * (i + 1));
             [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
         }
+
         return shuffled;
     }
 
@@ -164,15 +253,22 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 guildId: this.channel.guild.id,
                 adapterCreator: this.channel.guild.voiceAdapterCreator
             });
+
             try {
                 await entersState(this.connection, VoiceConnectionStatus.Ready, 20_000);
                 this.connection.subscribe(this.player);
-            } catch (err: any) {
+            }
+
+            catch (e: any) {
                 this.connection.destroy();
                 this.connection = null;
-                this.emit(MusicPlayerEvent.Error, this.createError("Can't connect to the voice channel. => " + err.message));
+                this.emit(MusicPlayerEvent.Error, this.createError("Can't connect to the voice channel. => " + e.message));
             }
+
+            return;
         }
+
+        return;
     }
 
     /**
@@ -191,6 +287,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             });
             url = playdl_results[0]?.url;
         }
+
         return url;
     }
 
@@ -227,8 +324,11 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         const options: any = { filter: "audioonly", highWaterMark: 1 << 25 };
         let stream: Stream.Readable | null = null;
         try { stream = await ytdl(url, options); } catch { }
+
         if (!stream) try { stream = await ytdl_core(url, options); } catch { }
+
         if (!stream) try { stream = await ytdl_core_discord(url, options); } catch { }
+
         return stream;
     }
 
@@ -240,6 +340,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     private async createStreamFromPlayDl(url: string): Promise<Stream.Readable | null> {
         const yt = await playdl.stream(url, { quality: 2 });
         if (!yt) return null;
+
         return yt.stream;
     }
 
@@ -253,9 +354,13 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url)) {
                 let info: ytdl.videoInfo | ytdl_core.videoInfo | undefined;
                 try { info = await ytdl.getBasicInfo(url); } catch { }
+
                 if (!info) try { info = await ytdl_core.getBasicInfo(url); } catch { }
+
                 if (!info) try { info = await ytdl_core_discord.getBasicInfo(url); } catch { }
+
                 if (!info) return { title: undefined, author: undefined, duration: undefined, thumbnail: undefined, source: "unknown", url };
+
                 const details = info.videoDetails;
                 return {
                     title: details.title,
@@ -266,6 +371,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                     url
                 };
             }
+
             if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(url)) {
                 const info = await scdl.getInfo(url);
                 return {
@@ -277,8 +383,10 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                     url
                 };
             }
+
             const result = await playdl.video_basic_info(url);
             const vid = result.video_details;
+
             return {
                 title: vid.title,
                 author: vid.channel?.name,
@@ -287,7 +395,9 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 source: "unknown",
                 url
             };
-        } catch {
+        }
+
+        catch {
             return { title: undefined, author: undefined, duration: undefined, thumbnail: undefined, source: "unknown", url };
         }
     }
@@ -301,14 +411,24 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         this.playing = true;
         this.history.push(url);
         let stream: Stream.Readable | null = null;
-        if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(url)) try { stream = await this.createStreamFromScdl(url); } catch { }
-        if (/^https?:\/\/open\.spotify\.com\/(track|album|playlist)\//.test(url)) if (!stream) try { stream = await this.createStreamFromPlayDl(url); } catch { }
-        if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url)) if (!stream) try { stream = await this.createStreamFromYtdl(url); } catch { }
+        if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(url))
+            try { stream = await this.createStreamFromScdl(url); } catch { }
+
+        if (/^https?:\/\/open\.spotify\.com\/(track|album|playlist)\//.test(url))
+            if (!stream) try { stream = await this.createStreamFromPlayDl(url); } catch { }
+
+        if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url))
+            if (!stream) try { stream = await this.createStreamFromYtdl(url); } catch { }
+
         const resource = createAudioResource(stream!, { inlineVolume: true });
         resource.volume?.setVolume(this.volume);
         this.player.play(resource);
-        if (!(this.player.state as AudioPlayerPlayingState).resource) (this.player.state as AudioPlayerPlayingState).resource = resource;
+        if (!(this.player.state as AudioPlayerPlayingState).resource)
+            (this.player.state as AudioPlayerPlayingState).resource = resource;
+
         this.emit(MusicPlayerEvent.Start, { metadata, queue: [...this.queue] });
+
+        return;
     }
 
     /**
@@ -322,9 +442,13 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         if (this.playing) {
             this.queue.push(metadata);
             this.emit(MusicPlayerEvent.QueueAdd, { metadata, queue: [...this.queue] });
-        } else {
+        }
+
+        else {
             await this.playUrl(url, metadata);
         }
+
+        return;
     }
 
     /**
@@ -350,9 +474,12 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     public setVolume(percent: number) {
         percent /= 100;
         if (percent < 0 || percent > 2) this.volume = 2;
+
         else this.volume = percent;
+
         const resource = (this.player.state as AudioPlayerPlayingState).resource;
         try { resource.volume!.setVolume(this.volume); } catch { }
+
         this.emit(MusicPlayerEvent.VolumeChange, { volume: Math.round(this.volume * 100) });
     }
 
@@ -363,27 +490,35 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         if (this.loopTrack) {
             const url = this.history[this.history.length - 1];
             const metadata = await this.fetchMetadata(url);
+
             return await this.playUrl(url, metadata);
         }
+
         if (this.queue.length) {
             const next = this.queue.shift()!;
             if (this.loopQueue) this.queue.push(next);
+
             return await this.playUrl(next.url, next);
         }
+
         if (this.radioMode && this.radioUrls.length > 0) {
             const shuffledUrls = this.shuffleArray([...this.radioUrls]);
             this.queue = await Promise.all(shuffledUrls.map(async url => await this.fetchMetadata(url)));
             if (this.queue.length > 0) {
                 const next = this.queue.shift()!;
+
                 return await this.playUrl(next.url, next);
             }
         }
+
         this.playing = false;
         this.emit(MusicPlayerEvent.Finish, { queue: [...this.queue], history: [...this.history] });
         if (this.autoLeaveOnEmptyQueue) {
             this.emit(MusicPlayerEvent.Disconnect);
             this.disconnect();
-        } else {
+        }
+
+        else {
             this.startIdleTimer();
         }
     }
@@ -394,6 +529,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     public skip() {
         this.emit(MusicPlayerEvent.Skip, { queue: [...this.queue], history: [...this.history] });
         this.player.stop();
+
+        return;
     }
 
     /**
@@ -404,12 +541,15 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             this.emit(MusicPlayerEvent.Error, this.createError("No track to previous."));
             return;
         }
+
         this.history.pop();
         const prevUrl = this.history.pop()!;
         const metadata = await this.fetchMetadata(prevUrl);
         this.queue.unshift(metadata);
         this.emit(MusicPlayerEvent.Previous, { metadata, queue: [...this.queue], history: [...this.history, prevUrl] });
         await this.playUrl(prevUrl, metadata);
+
+        return;
     }
 
     /**
@@ -421,8 +561,11 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             const j = Math.floor(Math.random() * (i + 1));
             [this.queue[i], this.queue[j]] = [this.queue[j], this.queue[i]];
         }
+
         this.shuffield = true;
         this.emit(MusicPlayerEvent.Shuffle, { queue: [...this.queue] });
+
+        return;
     }
 
     /**
@@ -432,13 +575,15 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         this.queue = this.previousQueueOrder.filter(meta => !this.history.includes(meta.url));
         this.shuffield = false;
         this.emit(MusicPlayerEvent.Shuffle, { queue: [...this.queue] });
+
+        return;
     }
 
     /**
      * Toggles queue looping on or off.
      */
     public toggleLoopQueue() {
-        this.loopQueue = !this.loopQueue;
+        return this.loopQueue = !this.loopQueue;
     }
 
     /**
@@ -453,7 +598,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
      * Toggles track looping on or off.
      */
     public toggleLoopTrack() {
-        this.loopTrack = !this.loopTrack;
+        return this.loopTrack = !this.loopTrack;
     }
 
     /**
@@ -474,10 +619,13 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             this.connection.destroy();
             this.connection = null;
         }
+
         this.playing = false;
         this.queue = [];
         this.history = [];
         this.emit(MusicPlayerEvent.Disconnect);
+
+        return;
     }
 
     /**
@@ -493,7 +641,10 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         this.history = [];
         this.clearIdleTimer();
         if (!noLeave) this.disconnect();
+
         this.emit(MusicPlayerEvent.Stop);
+
+        return;
     }
 
     /**
@@ -510,7 +661,9 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
      */
     public getVolume() {
         const resource = (this.player.state as AudioPlayerPlayingState).resource;
-        if (resource && resource.volume && resource.volume.volume) return Math.round(resource.volume.volume * 100);
+        if (resource && resource.volume && resource.volume.volume)
+            return Math.round(resource.volume.volume * 100);
+
         return Math.round(this.volume * 100);
     }
 
@@ -539,6 +692,14 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     }
 
     /**
+     * Checks if the queue is shuffled.
+     * @returns True if shuffled, false otherwise.
+     */
+    public isConnected(): boolean {
+        return Boolean(this.connection);
+    }
+
+    /**
      * Creates a custom error for the music player.
      * @param message - Error message.
      * @returns Custom error instance.
@@ -551,6 +712,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 this.message = message;
             }
         }
+
         return new discordPlayerError();
     }
 }
