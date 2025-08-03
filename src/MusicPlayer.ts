@@ -7,7 +7,8 @@ import {
     createAudioResource,
     entersState,
     VoiceConnectionStatus,
-    AudioPlayerPlayingState
+    AudioPlayerPlayingState,
+    getVoiceConnection
 } from "@discordjs/voice";
 import {
     VoiceChannel,
@@ -154,6 +155,26 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     }
 
     /**
+     * Establishes a connection to the voice channel if not already connected.
+     */
+    private async ensureConnection() {
+
+        if (!this.connection) {
+            this.connection = this.join();
+
+            try {
+                await entersState(this.connection, VoiceConnectionStatus.Ready, 20_000);
+            } catch (e: any) {
+                this.connection.destroy();
+                this.connection = null;
+                this.emit(MusicPlayerEvent.Error, this.createError("Can't connect to the voice channel. => " + e.message));
+            }
+        }
+
+        return;
+    }
+
+    /**
      * Starts a timer to disconnect after inactivity.
      */
     private startIdleTimer() {
@@ -163,6 +184,31 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 this.disconnect();
             }, this.autoLeaveOnIdleMs);
         }
+    }
+
+    /**
+     * Clears the idle timer if it exists.
+     */
+    private clearIdleTimer() {
+        if (this.idleTimer) {
+            clearTimeout(this.idleTimer);
+            this.idleTimer = null;
+        }
+    }
+
+    /**
+     * Randomly shuffles an array.
+     * @param array - Array to shuffle.
+     * @returns New shuffled array.
+     */
+    private shuffleArray<T>(array: T[]): T[] {
+        const shuffled = [...array];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+
+        return shuffled;
     }
 
     /**
@@ -219,59 +265,6 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     }
 
     /**
-     * Randomly shuffles an array.
-     * @param array - Array to shuffle.
-     * @returns New shuffled array.
-     */
-    private shuffleArray<T>(array: T[]): T[] {
-        const shuffled = [...array];
-        for (let i = shuffled.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-        }
-
-        return shuffled;
-    }
-
-    /**
-     * Clears the idle timer if it exists.
-     */
-    private clearIdleTimer() {
-        if (this.idleTimer) {
-            clearTimeout(this.idleTimer);
-            this.idleTimer = null;
-        }
-    }
-
-    /**
-     * Establishes a connection to the voice channel if not already connected.
-     */
-    private async ensureConnection() {
-        if (!this.connection) {
-            this.connection = joinVoiceChannel({
-                channelId: this.channel.id,
-                guildId: this.channel.guild.id,
-                adapterCreator: this.channel.guild.voiceAdapterCreator
-            });
-
-            try {
-                await entersState(this.connection, VoiceConnectionStatus.Ready, 20_000);
-                this.connection.subscribe(this.player);
-            }
-
-            catch (e: any) {
-                this.connection.destroy();
-                this.connection = null;
-                this.emit(MusicPlayerEvent.Error, this.createError("Can't connect to the voice channel. => " + e.message));
-            }
-
-            return;
-        }
-
-        return;
-    }
-
-    /**
      * Resolves a query to a track URL or returns the URL if provided.
      * @param query - Search query or URL.
      * @returns Resolved URL.
@@ -323,9 +316,9 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     private async createStreamFromYtdl(url: string): Promise<Stream.Readable | null> {
         const options: any = { filter: "audioonly", highWaterMark: 1 << 25 };
         let stream: Stream.Readable | null = null;
-        try { stream = await ytdl(url, options); } catch { }
+        try { stream = ytdl(url, options); } catch { }
 
-        if (!stream) try { stream = await ytdl_core(url, options); } catch { }
+        if (!stream) try { stream = ytdl_core(url, options); } catch { }
 
         if (!stream) try { stream = await ytdl_core_discord(url, options); } catch { }
 
@@ -350,16 +343,21 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
      * @returns Track metadata.
      */
     private async fetchMetadata(url: string): Promise<TrackMetadata> {
+        const empity_resualt: TrackMetadata = { title: undefined, author: undefined, duration: undefined, thumbnail: undefined, source: "unknown", url };
+
         try {
             if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url)) {
                 let info: ytdl.videoInfo | ytdl_core.videoInfo | undefined;
                 try { info = await ytdl.getBasicInfo(url); } catch { }
 
-                if (!info) try { info = await ytdl_core.getBasicInfo(url); } catch { }
+                if (!info)
+                    try { info = await ytdl_core.getBasicInfo(url); } catch { }
 
-                if (!info) try { info = await ytdl_core_discord.getBasicInfo(url); } catch { }
+                if (!info)
+                    try { info = await ytdl_core_discord.getBasicInfo(url); } catch { }
 
-                if (!info) return { title: undefined, author: undefined, duration: undefined, thumbnail: undefined, source: "unknown", url };
+                if (!info)
+                    return empity_resualt;
 
                 const details = info.videoDetails;
                 return {
@@ -398,7 +396,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         }
 
         catch {
-            return { title: undefined, author: undefined, duration: undefined, thumbnail: undefined, source: "unknown", url };
+            return empity_resualt;
         }
     }
 
@@ -457,6 +455,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     public pause() {
         this.player.pause();
         this.emit(MusicPlayerEvent.Pause);
+
+        return;
     }
 
     /**
@@ -465,6 +465,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     public resume() {
         this.player.unpause();
         this.emit(MusicPlayerEvent.Resume);
+
+        return;
     }
 
     /**
@@ -481,6 +483,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         try { resource.volume!.setVolume(this.volume); } catch { }
 
         this.emit(MusicPlayerEvent.VolumeChange, { volume: Math.round(this.volume * 100) });
+
+        return this.volume;
     }
 
     /**
@@ -521,6 +525,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         else {
             this.startIdleTimer();
         }
+
+        return;
     }
 
     /**
@@ -539,6 +545,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     public async previous() {
         if (this.history.length < 2) {
             this.emit(MusicPlayerEvent.Error, this.createError("No track to previous."));
+
             return;
         }
 
@@ -692,11 +699,24 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     }
 
     /**
-     * Checks if the queue is shuffled.
-     * @returns True if shuffled, false otherwise.
+     * Checks if the bot is actively connected to a voice channel.
+     * @param guildId - Optional guild ID; uses stored guild ID if not provided.
+     * @returns True if actively connected, false otherwise.
      */
-    public isConnected(): boolean {
-        return Boolean(this.connection);
+    public isConnected(guildId?: string): boolean {
+        const targetGuildId = guildId || this.connectionData?.guildId;
+        if (!targetGuildId)
+            return false;
+
+        const connection = this.connection || getVoiceConnection(targetGuildId);
+        if (!connection)
+            return false;
+
+        return [
+            VoiceConnectionStatus.Ready,
+            VoiceConnectionStatus.Connecting,
+            VoiceConnectionStatus.Signalling
+        ].includes(connection.state.status);
     }
 
     /**
