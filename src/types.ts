@@ -59,6 +59,11 @@ export interface TrackMetadata {
     source: "youtube" | "soundcloud" | "spotify" | "deezer" | "unknown";
     url: string;
 }
+
+export interface MusicPlayerOptions {
+    autoLeaveOnEmptyQueue?: boolean;
+    autoLeaveOnIdleMs?: number;
+}
 /**
  * @copyright
  * Code by Sobhan-SRZA (mr.sinre) | https://github.com/Sobhan-SRZA
