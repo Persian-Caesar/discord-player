@@ -19,11 +19,8 @@ import {
 } from "./types";
 import { htmlToText } from "html-to-text";
 import type { Stream } from "stream";
-import ytdl_core_discord from "ytdl-core-discord";
 import EventEmitter from "events";
-import ytdl_core from "ytdl-core";
-import playdl from "play-dl";
-import ytdl from "@distube/ytdl-core";
+import playdl, { InfoData } from "play-dl";
 import scdl from "soundcloud-downloader";
 
 /**
@@ -309,23 +306,6 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     }
 
     /**
-     * Creates a stream from a YouTube URL using various ytdl libraries.
-     * @param url - YouTube URL.
-     * @returns Readable stream or null if failed.
-     */
-    private async createStreamFromYtdl(url: string): Promise<Stream.Readable | null> {
-        const options: any = { filter: "audioonly", highWaterMark: 1 << 25 };
-        let stream: Stream.Readable | null = null;
-        try { stream = ytdl(url, options); } catch { }
-
-        if (!stream) try { stream = ytdl_core(url, options); } catch { }
-
-        if (!stream) try { stream = await ytdl_core_discord(url, options); } catch { }
-
-        return stream;
-    }
-
-    /**
      * Creates a stream from a URL using play-dl.
      * @param url - URL to stream.
      * @returns Readable stream or null if failed.
@@ -347,23 +327,17 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
         try {
             if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url)) {
-                let info: ytdl.videoInfo | ytdl_core.videoInfo | undefined;
-                try { info = await ytdl.getBasicInfo(url); } catch { }
-
-                if (!info)
-                    try { info = await ytdl_core.getBasicInfo(url); } catch { }
-
-                if (!info)
-                    try { info = await ytdl_core_discord.getBasicInfo(url); } catch { }
+                let info: InfoData | undefined;
+                try { info = await playdl.video_info(url); } catch { }
 
                 if (!info)
                     return empity_resualt;
 
-                const details = info.videoDetails;
+                const details = info.video_details;
                 return {
                     title: details.title,
-                    author: details.author.name,
-                    duration: parseInt(details.lengthSeconds, 10),
+                    author: details.channel?.name,
+                    duration: details.durationInSec,
                     thumbnail: details.thumbnails[details.thumbnails.length - 1].url,
                     source: "youtube",
                     url
@@ -401,6 +375,39 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     }
 
     /**
+     * Create a stream from url.
+     * @param url - Track URL.
+     */
+    private async createStream(url: string): Promise<Stream.Readable | null> {
+        try {
+            if (playdl.yt_validate(url) === "video") {
+                const yt_info = await playdl.stream(url, { quality: 2 }); // 2 = audio only
+
+                return yt_info.stream;
+            }
+
+            if (playdl.sp_validate(url) === "track") {
+                const sp_info = await playdl.spotify(url);
+                const search = await playdl.search(`${sp_info.name} ${sp_info.name}`, { limit: 1 });
+                if (search.length > 0) {
+                    const yt_info = await playdl.stream(search[0].url, { quality: 2 });
+
+                    return yt_info.stream;
+                }
+            }
+
+            if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(url)) {
+                return await scdl.download(url);
+            }
+
+            return null;
+        } catch (err) {
+            console.error("Stream error =>", err);
+            return null;
+        }
+    }
+
+    /**
      * Plays a track URL with its metadata.
      * @param url - Track URL.
      * @param metadata - Track metadata.
@@ -408,19 +415,18 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     private async playUrl(url: string, metadata: TrackMetadata) {
         this.playing = true;
         this.history.push(url);
-        let stream: Stream.Readable | null = null;
-        if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(url))
-            try { stream = await this.createStreamFromScdl(url); } catch { }
 
-        if (/^https?:\/\/open\.spotify\.com\/(track|album|playlist)\//.test(url))
-            if (!stream) try { stream = await this.createStreamFromPlayDl(url); } catch { }
+        const stream = await this.createStream(url);
+        if (!stream) {
+            this.emit(MusicPlayerEvent.Error, this.createError("Failed to create stream for " + url));
+            return;
+        }
 
-        if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url))
-            if (!stream) try { stream = await this.createStreamFromYtdl(url); } catch { }
-
-        const resource = createAudioResource(stream!, { inlineVolume: true });
+        const resource = createAudioResource(stream, { inlineVolume: true });
         resource.volume?.setVolume(this.volume);
         this.player.play(resource);
+
+
         if (!(this.player.state as AudioPlayerPlayingState).resource)
             (this.player.state as AudioPlayerPlayingState).resource = resource;
 
