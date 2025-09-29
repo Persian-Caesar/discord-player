@@ -59,6 +59,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         debug?: boolean;
     } | null = null;
 
+    private youtubeCookie: string | undefined;
+
     /**
      * Initializes a new MusicPlayer instance.
      * @param channel - Discord voice channel to connect to.
@@ -92,12 +94,14 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         this.player.on(AudioPlayerStatus.Idle, () => this.onIdle()); // Triggers when no audio is playing
         this.player.on(AudioPlayerStatus.Playing, () => this.clearIdleTimer()); // Clears idle timer when music starts
 
-        if (options.youtubeCookie)
+        if (options.youtubeCookie) {
             void playdl.setToken({
                 youtube: {
                     cookie: options.youtubeCookie
                 }
             });
+            this.youtubeCookie = options.youtubeCookie;
+        }
     }
 
 
@@ -169,7 +173,9 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
             try {
                 await entersState(this.connection, VoiceConnectionStatus.Ready, 20_000);
-            } catch (e: any) {
+            }
+
+            catch (e: any) {
                 this.connection.destroy();
                 this.connection = null;
                 this.emit(MusicPlayerEvent.Error, this.createError("Can't connect to the voice channel. => " + e.message));
@@ -373,17 +379,18 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                     noCheckCertificate: true,
                     noWarnings: true,
                     preferFreeFormats: true,
-                    addHeader: "referer:youtube.com,user-agent:Mozilla/5.0"
+                    addHeader: `cookie: ${this.youtubeCookie}`
                 });
 
-                const audioUrl = info.url;
-                
-                return audioUrl as any;
+                const formats = info.formats.filter((f: any) => f.acodec !== "none" && f.vcodec === "none");
+                if (!formats.length) return null;
+                return formats[0].url as any;
             }
 
             if (playdl.sp_validate(url) === "track") {
                 const sp_info = await playdl.spotify(url);
                 const search = await playdl.search(`${sp_info.name} ${sp_info.name}`, { limit: 1 });
+
                 if (search.length > 0) {
                     const yt_info = await playdl.stream(search[0].url, { quality: 2 });
 
@@ -396,7 +403,9 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             }
 
             return null;
-        } catch (err) {
+        }
+
+        catch (err) {
             console.error("Stream error =>", err);
             return null;
         }
