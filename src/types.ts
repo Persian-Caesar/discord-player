@@ -61,6 +61,7 @@ export interface TrackMetadata {
 }
 
 export interface MusicPlayerOptions {
+    youtubeCookie?:string;
     autoLeaveOnEmptyQueue?: boolean;
     autoLeaveOnIdleMs?: number;
 }

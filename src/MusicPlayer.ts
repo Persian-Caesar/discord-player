@@ -90,6 +90,13 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         });
         this.player.on(AudioPlayerStatus.Idle, () => this.onIdle()); // Triggers when no audio is playing
         this.player.on(AudioPlayerStatus.Playing, () => this.clearIdleTimer()); // Clears idle timer when music starts
+
+        if (options.youtubeCookie)
+            void playdl.setToken({
+                youtube: {
+                    cookie: options.youtubeCookie
+                }
+            });
     }
 
 
