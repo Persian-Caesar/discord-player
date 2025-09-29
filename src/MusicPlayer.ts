@@ -21,6 +21,7 @@ import { htmlToText } from "html-to-text";
 import type { Stream } from "stream";
 import EventEmitter from "events";
 import playdl, { InfoData } from "play-dl";
+import ytdlp from "yt-dlp-exec";
 import scdl from "soundcloud-downloader";
 
 /**
@@ -304,27 +305,6 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     }
 
     /**
-     * Creates a stream from a SoundCloud URL.
-     * @param url - SoundCloud URL.
-     * @returns Readable stream.
-     */
-    private async createStreamFromScdl(url: string): Promise<Stream.Readable> {
-        return await scdl.download(url);
-    }
-
-    /**
-     * Creates a stream from a URL using play-dl.
-     * @param url - URL to stream.
-     * @returns Readable stream or null if failed.
-     */
-    private async createStreamFromPlayDl(url: string): Promise<Stream.Readable | null> {
-        const yt = await playdl.stream(url, { quality: 2 });
-        if (!yt) return null;
-
-        return yt.stream;
-    }
-
-    /**
      * Fetches metadata for a track URL.
      * @param url - Track URL.
      * @returns Track metadata.
@@ -388,9 +368,17 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     private async createStream(url: string): Promise<Stream.Readable | null> {
         try {
             if (playdl.yt_validate(url) === "video") {
-                const yt_info = await playdl.stream(url, { quality: 2 }); // 2 = audio only
+                const info = await ytdlp(url, {
+                    dumpSingleJson: true,
+                    noCheckCertificate: true,
+                    noWarnings: true,
+                    preferFreeFormats: true,
+                    addHeader: "referer:youtube.com,user-agent:Mozilla/5.0"
+                });
 
-                return yt_info.stream;
+                const audioUrl = info.url;
+                
+                return audioUrl as any;
             }
 
             if (playdl.sp_validate(url) === "track") {
