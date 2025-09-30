@@ -15,9 +15,8 @@ export enum MusicPlayerEvent {
     Error = "error"
 }
 
-
 export interface StartPayload { metadata: TrackMetadata; queue: TrackMetadata[]; }
-export interface QueueAddPayload { metadata: TrackMetadata; queue: TrackMetadata[] }
+export interface QueueAddPayload { metadata?: TrackMetadata; metadatas?: TrackMetadata[]; queue: TrackMetadata[] }
 export interface VolumeChangePayload { volume: number }
 export interface SkipPayload { queue: TrackMetadata[]; history: string[]; }
 export interface PreviousPayload { metadata: TrackMetadata; queue: TrackMetadata[]; history: string[]; }
@@ -60,10 +59,27 @@ export interface TrackMetadata {
     url: string;
 }
 
+export type SearchPlatform = "youtube" | "spotify" | "soundcloud" | "deezer";
+
 export interface MusicPlayerOptions {
-    youtubeCookie?:string;
     autoLeaveOnEmptyQueue?: boolean;
     autoLeaveOnIdleMs?: number;
+    youtubeCookie?: string;
+}
+
+export interface Client {
+    user?: {
+        id?: string;
+    };
+    once(event: "ready", listener: () => void): void;
+    ws: {
+        on(event: GatewayDispatchEvents, listener: (data: any) => void): void;
+    };
+}
+
+export enum GatewayDispatchEvents {
+    VoiceServerUpdate = "VOICE_SERVER_UPDATE",
+    VoiceStateUpdate = "VOICE_STATE_UPDATE"
 }
 /**
  * @copyright

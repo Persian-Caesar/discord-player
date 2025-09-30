@@ -24,6 +24,7 @@
  */
 export * from "./MusicPlayer";
 export * from "./PlayerManager";
+export * from "./LavalinkManager";
 export * from "./types";
 /**
  * @copyright

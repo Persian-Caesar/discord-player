@@ -1,6 +1,6 @@
 {
   "name": "@persian-caesar/discord-player",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "Type definitions and helpers for a Discord music player (MusicPlayer) without external dependencies",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -52,11 +52,12 @@
   "dependencies": {
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.18.0",
+    "discord.js": "^14.22.1",
+    "erela.js": "^2.4.0",
     "html-to-text": "^9.0.5",
     "libsodium-wrappers": "^0.7.15",
     "play-dl": "^1.9.7",
-    "soundcloud-downloader": "^1.0.0",
-    "yt-dlp-exec": "^1.0.2"
+    "soundcloud-downloader": "^1.0.0"
   },
   "devDependencies": {
     "@types/html-to-text": "^9.0.4"
