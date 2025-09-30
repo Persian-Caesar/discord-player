@@ -29,6 +29,7 @@ import playdl, { InfoData } from "play-dl";
 import scdl from "soundcloud-downloader";
 import type { Stream } from "stream";
 import { TrackInfo } from "soundcloud-downloader/src/info";
+import { LavalinkManager } from "./LavalinkManager";
 
 /**
  * Manages voice connection, playback, queue, history, and loop modes.
@@ -87,14 +88,14 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     constructor(
         public channel: VoiceChannel,
         public textChannel: TextChannel,
+        lavaLinkManager?: LavalinkManager,
         initialVolume = 100,
-        lavaLinkManager?: Manager,
         options: MusicPlayerOptions = {}
     ) {
         super();
 
         this.useLavalink = !!lavaLinkManager;
-        this.manager = lavaLinkManager;
+        this.manager = lavaLinkManager?.manager;
         this.volume = initialVolume;
         this.autoLeaveOnEmptyQueue = options.autoLeaveOnEmptyQueue ?? true;
         this.autoLeaveOnIdleMs = options.autoLeaveOnIdleMs ?? 5 * 60_000;
