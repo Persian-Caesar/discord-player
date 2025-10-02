@@ -7,18 +7,14 @@ import {
     ManagerOptions
 } from "erela.js";
 
-export class LavalinkManager {
-    public manager: Manager;
-    constructor(
-        client: Client,
-        options: ManagerOptions
-    ) {
-        this.manager = new Manager(options);
+export function LavalinkManager(client: Client, options: ManagerOptions) {
+    const manager = new Manager(options);
 
-        client.once("ready", () => this.manager.init(client.user?.id))
-        client.ws.on(GatewayDispatchEvents.VoiceServerUpdate, (data) => this.manager.updateVoiceState(data));
-        client.ws.on(GatewayDispatchEvents.VoiceStateUpdate, (data) => this.manager.updateVoiceState(data));
-    }
+    client.once("ready", () => manager.init(client.user?.id))
+    client.ws.on(GatewayDispatchEvents.VoiceServerUpdate, (data) => manager.updateVoiceState(data));
+    client.ws.on(GatewayDispatchEvents.VoiceStateUpdate, (data) => manager.updateVoiceState(data));
+
+    return manager;
 }
 
 /**

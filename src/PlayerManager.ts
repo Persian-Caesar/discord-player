@@ -1,11 +1,11 @@
 import {
     VoiceChannel,
     MusicPlayerOptions,
-    MusicPlayerEvent
+    MusicPlayerEvent,
+    TextChannel
 } from "./types";
-import { LavalinkManager } from "./LavalinkManager";
 import { MusicPlayer } from "./MusicPlayer";
-import { TextChannel } from "discord.js";
+import { Manager } from "erela.js";
 
 export class PlayerManager {
     private static players: Map<string, MusicPlayer> = new Map();
@@ -14,18 +14,19 @@ export class PlayerManager {
         guildId: string,
         channel: VoiceChannel,
         textChannel: TextChannel,
-        lavaLinkManager?: LavalinkManager,
-        initialVolume = 100,
-        options: MusicPlayerOptions = {}
+        lavaLinkManager?: Manager,
+        options?: MusicPlayerOptions
     ): MusicPlayer {
         let player = this.players.get(guildId);
         if (!player) {
-            player = new MusicPlayer(channel, textChannel, lavaLinkManager, initialVolume, options);
+            player = new MusicPlayer(channel, textChannel, lavaLinkManager, options);
             this.players.set(guildId, player);
             player.on(MusicPlayerEvent.Disconnect as any, () => {
                 this.players.delete(guildId);
             });
-        } else if (player.channel.id !== channel.id) {
+        }
+
+        else if (player.channel.id !== channel.id) {
             player.setData({
                 channelId: channel.id,
                 guildId: channel.guild.id,

@@ -62,9 +62,14 @@ export interface TrackMetadata {
 export type SearchPlatform = "youtube" | "spotify" | "soundcloud" | "deezer";
 
 export interface MusicPlayerOptions {
+    initialVolume?: number;
     autoLeaveOnEmptyQueue?: boolean;
     autoLeaveOnIdleMs?: number;
     youtubeCookie?: string;
+}
+
+export interface TextChannel {
+    id: string;
 }
 
 export interface Client {
