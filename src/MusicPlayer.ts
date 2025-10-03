@@ -16,14 +16,24 @@ import {
     TrackMetadata,
     MusicPlayerOptions,
     SearchPlatform,
-    TextChannel
+    TextChannel,
+    PlaylistMetadata
 } from "./types";
+import playdl, {
+    DeezerPlaylist,
+    DeezerTrack,
+    SpotifyPlaylist,
+    SpotifyTrack,
+    YouTubeVideo
+} from "play-dl";
+import {
+    Manager,
+    Player
+} from "erela.js";
 import { htmlToText } from "html-to-text";
-import { Manager, Player } from "erela.js";
 import { TrackInfo } from "soundcloud-downloader/src/info";
 import type { Stream } from "stream";
 import EventEmitter from "events";
-import playdl, { DeezerTrack, InfoData, SpotifyTrack, YouTubeVideo } from "play-dl";
 import scdl from "soundcloud-downloader";
 
 // Custom error class for detailed console output
@@ -77,7 +87,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         public channel: VoiceChannel,
         public textChannel: TextChannel,
         lavaLinkManager?: Manager,
-        options: MusicPlayerOptions = {}
+        private options: MusicPlayerOptions = {}
     ) {
         super();
 
@@ -110,7 +120,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 this.playing = true;
                 this.clearIdleTimer();
                 const metadata = await this.extractMetadata(track.uri);
-                this.emit(MusicPlayerEvent.Start, { metadata, queue: await this.getQueue() });
+                const queue = await this.getQueue();
+                this.emit(MusicPlayerEvent.Start, { metadata, queue });
             });
 
             this.manager.on("trackEnd", () => this.onIdle());
@@ -121,21 +132,27 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
             this.manager.on("trackError", (player, track, error) => {
                 const err = new MusicPlayerError(`Track error: ${error.error}`, "TrackError");
-                console.error(err.toString());
+                if (options.logError)
+                    console.error(err.toString());
+
                 this.emit(MusicPlayerEvent.Error, err);
                 this.skip();
             });
 
             this.manager.on("trackStuck", (player, track, threshold) => {
                 const err = new MusicPlayerError(`Track stuck for ${threshold.thresholdMs}ms`, "TrackStuck");
-                console.error(err.toString());
+                if (options.logError)
+                    console.error(err.toString());
+
                 this.emit(MusicPlayerEvent.Error, err);
                 this.skip();
             });
 
             this.manager.on("socketClosed", (player, payload) => {
                 const err = new MusicPlayerError(`Socket closed: ${payload.reason}`, "SocketError");
-                console.error(err.toString());
+                if (options.logError)
+                    console.error(err.toString());
+
                 this.emit(MusicPlayerEvent.Error, err);
             });
         }
@@ -144,14 +161,16 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             this.player = createAudioPlayer();
             this.player.on("error", err => {
                 const customErr = new MusicPlayerError(`Player error: ${err.message}`, "PlayerError");
-                console.error(customErr.toString());
+                if (options.logError)
+                    console.error(customErr.toString());
+
                 this.emit(MusicPlayerEvent.Error, customErr);
             });
             this.player.on(AudioPlayerStatus.Idle, () => this.onIdle());
             this.player.on(AudioPlayerStatus.Playing, () => this.clearIdleTimer());
 
             if (options.youtubeCookie) {
-                playdl.setToken({ youtube: { cookie: options.youtubeCookie } });
+                void playdl.setToken({ youtube: { cookie: options.youtubeCookie } });
             }
         }
     }
@@ -159,7 +178,10 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     public join(): VoiceConnection {
         if (!this.connectionData) {
             const err = new MusicPlayerError("No connection data available.", "ConnectionError");
-            console.error(err.toString());
+            if (this.options.logError)
+                console.error(err.toString());
+
+            this.emit(MusicPlayerEvent.Error, err);
 
             throw err;
         }
@@ -172,8 +194,11 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         catch (e: any) {
             connection.destroy();
             const err = new MusicPlayerError(`Can't connect to voice channel: ${e.message}`, "ConnectionError");
-            console.error(err.toString());
+            if (this.options.logError)
+                console.error(err.toString());
+
             this.emit(MusicPlayerEvent.Error, err);
+
             throw err;
         }
 
@@ -208,7 +233,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         return this;
     }
 
-    private async ensureConnection() {
+    private ensureConnection() {
         if (this.useLavalink && this.manager) {
             if ((this.player as Player).state !== "CONNECTED") {
                 (this.player as Player).connect();
@@ -260,26 +285,257 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 const delim1 = '</div></div></div></div><div class="hwc"><div class="BNeawe tAd8D AP7Wnd"><div><div class="BNeawe tAd8D AP7Wnd">';
                 const delim2 = '</div></div></div></div></div><div><span class="hwc"><div class="BNeawe uEec3 AP7Wnd">';
                 let snippet = html.split(delim1)[1]?.split(delim2)[0];
-                if (!snippet) continue;
+                if (!snippet)
+                    continue;
 
                 const lyrics = snippet.split("\n").map(line => htmlToText(line).trim()).join("\n").trim();
+
                 return lyrics || null;
-            } catch (e) {
-                console.error(new MusicPlayerError(`Lyrics fetch failed for ${url}: ${e}`, "LyricsError").toString());
+            }
+
+            catch (e) {
+                const err = new MusicPlayerError(`Lyrics fetch failed for ${url}: ${e}`, "LyricsError");
+                if (this.options.logError)
+                    console.error(err.toString());
+
+                this.emit(MusicPlayerEvent.Error, err);
+
                 continue;
             }
         }
+
         return null;
+    }
+
+    public async isPlaylist(url: string): Promise<boolean> {
+        if (this.useLavalink && this.manager) {
+            const res = await (this.player as Player).search(url);
+            return res.loadType === "PLAYLIST_LOADED";
+        }
+
+        else {
+            return playdl.yt_validate(url) === "playlist" ||
+                playdl.sp_validate(url) === "playlist" ||
+                await playdl.dz_validate(url) === "playlist" ||
+                url.includes("/sets/");
+        }
+    }
+
+    private async searchOnPlaylistPlatform(query: string, platform: SearchPlatform, limit: number): Promise<PlaylistMetadata[]> {
+        const retry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    return await fn();
+                }
+
+                catch (err: any) {
+                    if (err.message.includes("429") && i < retries - 1) {
+                        await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+
+                        continue;
+                    }
+
+                    const customErr = new MusicPlayerError(`Playlist search failed on ${platform}: ${err.message}`, "SearchError");
+                    console.error(customErr.toString());
+
+                    this.emit(MusicPlayerEvent.Error, customErr);
+
+                    throw customErr;
+                }
+            }
+            const err = new MusicPlayerError("Max retries reached for playlist search.", "SearchError");
+            console.error(err.toString());
+
+            this.emit(MusicPlayerEvent.Error, err);
+
+            throw err;
+        };
+
+        if (this.useLavalink && this.manager) {
+            // Lavalink doesn't have direct playlist search for queries, fallback to standard search and filter
+            const res = await retry(() => (this.player as Player).search(
+                `${platform === "youtube" ? "ytsearch" : platform === "soundcloud" ? "scsearch" : platform}:${query} playlist`
+            ));
+
+            if (res.loadType === "LOAD_FAILED" || res.loadType === "NO_MATCHES") {
+                return [];
+            }
+
+            // Filter to playlist-like results (heuristic, as Lavalink returns tracks)
+            // For true playlist search, use fallback logic even with Lavalink
+            return []; // Placeholder, implement if needed
+        }
+
+        else {
+            try {
+                if (platform === "youtube") {
+                    const results = await retry(() => playdl.search(query, { limit, source: { youtube: "playlist" } }));
+
+                    return results.map(r => ({
+                        title: r.title!,
+                        url: r.url,
+                        trackCount: r.views || 0, // Approximate, as play-dl playlist has views not count
+                        thumbnail: r.thumbnail?.url,
+                        source: "youtube"
+                    })) as PlaylistMetadata[];
+                }
+
+                else if (platform === "spotify") {
+                    const results = await retry(() => playdl.search(query, { limit, source: { spotify: "playlist" } }));
+
+                    return results.map(r => ({
+                        title: r.name!,
+                        url: r.url,
+                        trackCount: r.tracksCount || 0,
+                        thumbnail: r.thumbnail?.url,
+                        source: "spotify"
+                    }));
+                }
+
+                else if (platform === "soundcloud") {
+                    const results = await retry(() => scdl.search({ query, resourceType: "playlists", limit }));
+                    return results.collection.map((r: any) => ({
+                        title: r.title!,
+                        url: r.permalink_url,
+                        trackCount: r.track_count,
+                        thumbnail: r.artwork_url || r.user.avatar_url,
+                        source: "soundcloud"
+                    }));
+                }
+
+                else if (platform === "deezer") {
+                    const results = await retry(() => playdl.search(query, { limit, source: { deezer: "playlist" } }));
+                    return results.map(r => ({
+                        title: r.title!,
+                        url: r.url,
+                        trackCount: r.tracksCount || 0,
+                        thumbnail: r.picture.medium,
+                        source: "deezer"
+                    }));
+                }
+            }
+
+            catch (e) {
+                const err = new MusicPlayerError(`Playlist search error on ${platform}: ${e}`, "SearchError");
+                console.error(err.toString());
+                this.emit(MusicPlayerEvent.Error, err);
+
+                return [];
+            }
+        }
+        return [];
+    }
+
+    public async searchPlaylists(query: string, platform?: SearchPlatform, limit = 5): Promise<PlaylistMetadata[]> {
+        const platforms = platform ? [platform] : ["youtube", "spotify", "soundcloud", "deezer"];
+
+        for (const plat of platforms) {
+            const results = await this.searchOnPlaylistPlatform(query, plat as SearchPlatform, limit);
+            if (results.length > 0) {
+                return results;
+            }
+        }
+
+        return [];
+    }
+
+    private async loadPlaylist(url: string): Promise<TrackMetadata[]> {
+        if (this.useLavalink && this.manager) {
+            const res = await (this.player as Player).search(url);
+            if (res.loadType !== "PLAYLIST_LOADED") {
+                const err = new MusicPlayerError(`Failed to load playlist: ${url}`, "PlaylistError");
+                console.error(err.toString());
+
+                this.emit(MusicPlayerEvent.Error, err);
+            }
+
+            return res.tracks.map(t => ({
+                title: t.title,
+                author: t.author,
+                duration: t.isStream ? undefined : Math.floor(t.duration / 1000),
+                thumbnail: t.thumbnail || undefined,
+                source: this.detectSource(t.uri),
+                url: t.uri
+            }));
+        }
+
+        else {
+            try {
+                if (playdl.yt_validate(url) === "playlist") {
+                    const info = await playdl.playlist_info(url, { incomplete: true });
+                    const videos = await info.all_videos();
+
+                    return videos.map(v => ({
+                        title: v.title!,
+                        author: v.channel?.name,
+                        duration: v.durationInSec,
+                        thumbnail: v.thumbnails[0]?.url,
+                        source: "youtube",
+                        url: v.url
+                    }));
+                }
+
+                else if (playdl.sp_validate(url) === "playlist") {
+                    const info = await playdl.spotify(url) as SpotifyPlaylist;
+                    const tracks = await info.all_tracks();
+
+                    return tracks.map(t => ({
+                        title: t.name!,
+                        author: t.artists[0]?.name,
+                        duration: t.durationInSec,
+                        thumbnail: t.thumbnail?.url,
+                        source: "spotify",
+                        url: t.url
+                    }));
+                }
+
+                else if (await playdl.dz_validate(url) === "playlist") {
+                    const info = await playdl.deezer(url) as DeezerPlaylist;
+                    const tracks = await info.all_tracks();
+
+                    return tracks.map(t => ({
+                        title: t.title!,
+                        author: t.artist?.name,
+                        duration: t.durationInSec,
+                        thumbnail: t.album.cover.medium || t.artist.picture?.medium,
+                        source: "deezer",
+                        url: t.url
+                    }));
+                }
+
+                else if (url.includes("/sets/")) {
+                    const info = await scdl.getSetInfo(url);
+
+                    return info.tracks.map((t: TrackInfo) => ({
+                        title: t.title!,
+                        author: t.user?.username!,
+                        duration: Math.floor((t.duration)! / 1000),
+                        thumbnail: t.artwork_url || t.user?.avatar_url,
+                        source: "soundcloud",
+                        url: t.permalink_url!
+                    }));
+                }
+            }
+
+            catch (e) {
+                const err = new MusicPlayerError(`Failed to load playlist tracks from ${url}: ${e}`, "PlaylistError");
+                console.error(err.toString());
+                this.emit(MusicPlayerEvent.Error, err);
+            }
+        }
+
+        return [];
     }
 
     public async search(query: string, platform?: SearchPlatform, limit = 1): Promise<TrackMetadata[]> {
         if (limit < 1) {
             const err = new MusicPlayerError("Search limit must be at least 1.", "SearchError");
             console.error(err.toString());
-            throw err;
+
+            this.emit(MusicPlayerEvent.Error, err);
         }
 
-        await this.ensureConnection();
+        this.ensureConnection();
 
         const cacheKey = `${platform || "all"}:${query}:${limit}`;
         if (metadataCache.has(cacheKey)) {
@@ -287,22 +543,24 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         }
 
         if (/^https?:\/\//.test(query) && !this.isPlatformUrl(query)) {
-            const metadata: TrackMetadata = {
+            const metadata = {
                 title: "Direct Stream",
                 author: undefined,
                 duration: undefined,
                 thumbnail: undefined,
                 source: "unknown",
                 url: query
-            };
-
+            } as TrackMetadata;
             metadataCache.set(cacheKey, [metadata]);
 
             return [metadata];
         }
 
-        // Prioritize platform based on URL if provided
-        const platforms = this.determinePlatforms(query, platform);
+        const platforms = platform
+            ? [platform]
+            : this.useLavalink
+                ? ["youtube", "deezer", "spotify", "soundcloud"]
+                : ["spotify", "soundcloud", "youtube", "deezer"];
 
         for (const plat of platforms) {
             const results = await this.searchOnPlatform(query, plat as SearchPlatform, limit);
@@ -313,33 +571,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             }
         }
 
-        const err = new MusicPlayerError(`No results found for query: ${query}`, "SearchError");
-        console.error(err.toString());
-
         return [];
-    }
-
-    private determinePlatforms(query: string, platform?: SearchPlatform): SearchPlatform[] {
-        if (platform) return [platform];
-
-        // If query is a URL, prioritize the matching platform
-        if (this.isPlatformUrl(query)) {
-            if (/(youtube\.com|youtu\.be)/.test(query))
-                return ["youtube", "spotify", "soundcloud", "deezer"];
-
-            if (/spotify\.com/.test(query))
-                return ["spotify", "youtube", "soundcloud", "deezer"];
-
-            if (/(soundcloud\.com|snd\.sc)/.test(query))
-                return ["soundcloud", "youtube", "spotify", "deezer"];
-
-            if (/deezer\.com/.test(query))
-                return ["deezer", "youtube", "spotify", "soundcloud"];
-        }
-
-        return this.useLavalink
-            ? ["youtube", "spotify", "soundcloud", "deezer"]
-            : ["spotify", "soundcloud", "youtube", "deezer"];
     }
 
     private async searchOnPlatform(query: string, platform: SearchPlatform, limit: number): Promise<TrackMetadata[]> {
@@ -352,16 +584,25 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 catch (err: any) {
                     if (err.message.includes("429") && i < retries - 1) {
                         await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+
                         continue;
                     }
+
                     const customErr = new MusicPlayerError(`Search failed on ${platform}: ${err.message}`, "SearchError");
-                    console.error(customErr.toString());
+                    if (this.options.logError)
+                        console.error(customErr.toString());
+
+                    this.emit(MusicPlayerEvent.Error, err);
+
                     throw customErr;
                 }
             }
 
             const err = new MusicPlayerError("Max retries reached for search.", "SearchError");
-            console.error(err.toString());
+            if (this.options.logError)
+                console.error(err.toString());
+
+            this.emit(MusicPlayerEvent.Error, err);
 
             throw err;
         };
@@ -369,7 +610,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         if (this.useLavalink && this.manager) {
             try {
                 const res = await retry(() => (this.player as Player).search(
-                    `${platform === "youtube" ? "ytsearch" : platform === "soundcloud" ? "scsearch" : platform}:${query}`,
+                    `${platform}:${query}`,
                     undefined
                 ));
 
@@ -387,8 +628,13 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 return tracks;
             }
 
-            catch (err) {
-                console.error(new MusicPlayerError(`Lavalink search error on ${platform}: ${err}`, "SearchError").toString());
+            catch (e) {
+                const err = new MusicPlayerError(`Lavalink search error on ${platform}: ${e}`, "SearchError");
+                if (this.options.logError)
+                    console.error(err.toString());
+
+                this.emit(MusicPlayerEvent.Error, err);
+
                 return [];
             }
         }
@@ -448,8 +694,13 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 }
             }
 
-            catch (err) {
-                console.error(new MusicPlayerError(`Search error on ${platform}: ${err}`, "SearchError").toString());
+            catch (e) {
+                const err = new MusicPlayerError(`Search error on ${platform}: ${e}`, "SearchError");
+                if (this.options.logError)
+                    console.error(err.toString());
+
+                this.emit(MusicPlayerEvent.Error, err);
+
                 return [];
             }
         }
@@ -467,6 +718,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         for (const url of shuffledUrls) {
             await this.play(url, true);
         }
+
         this.loopQueue = true;
     }
 
@@ -506,7 +758,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         try {
             if (this.useLavalink && this.manager) {
                 const lvTrack = (await this.manager.search(track)).tracks[0];
-                if (!lvTrack) return emptyResult;
+                if (!lvTrack)
+                    return emptyResult;
 
                 const metadata = {
                     title: lvTrack.title,
@@ -524,7 +777,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
             if (/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(track)) {
                 const info = await playdl.video_info(track).catch(() => null);
-                if (!info) return emptyResult;
+                if (!info)
+                    return emptyResult;
 
                 const details = info.video_details;
                 const metadata: TrackMetadata = {
@@ -543,7 +797,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
             if (/^https?:\/\/(soundcloud\.com|snd\.sc)\//.test(track)) {
                 const info = await scdl.getInfo(track).catch(() => null);
-                if (!info) return emptyResult;
+                if (!info)
+                    return emptyResult;
 
                 const metadata: TrackMetadata = {
                     title: info.title,
@@ -580,66 +835,127 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
         catch (e) {
             const err = new MusicPlayerError(`Failed to extract metadata for ${track}: ${e}`, "MetadataError");
-            console.error(err.toString());
+            if (this.options.logError)
+                console.error(err.toString());
+
+            this.emit(MusicPlayerEvent.Error, err);
 
             return emptyResult;
         }
     }
 
     public async play(input: string | TrackMetadata | TrackMetadata[], radio = false) {
-        await this.ensureConnection();
+        this.ensureConnection();
 
         let tracks: TrackMetadata[] = [];
+        let isPlaylist = false;
         if (typeof input === "string") {
-            if (this.isPlatformUrl(input)) {
-                tracks = [await this.extractMetadata(input)];
-            }
-
-            else {
-                const results = await this.search(input, undefined, 1); // Limit to 1 for single track
-                if (results.length === 0) {
-                    const err = new MusicPlayerError(`No results for: ${input}`, "PlayError");
+            isPlaylist = await this.isPlaylist(input);
+            if (isPlaylist) {
+                tracks = await this.loadPlaylist(input);
+                if (tracks.length === 0) {
+                    const err = new MusicPlayerError(`No tracks found in playlist: ${input}`, "PlayError");
                     console.error(err.toString());
                     this.emit(MusicPlayerEvent.Error, err);
 
                     return;
                 }
+            }
 
-                tracks = [results[0]]; // Only first result
+            else {
+                const results = await this.search(input, undefined, 1);
+                if (results.length === 0) {
+                    const err = new MusicPlayerError(`No results for: ${input}`, "PlayError");
+                    console.error(err.toString());
+                    this.emit(MusicPlayerEvent.Error, err);
+                    return;
+                }
+
+                tracks = [results[0]];
             }
         }
 
         else if (Array.isArray(input)) {
-            tracks = input; // Playlists or arrays
+            tracks = input;
+            isPlaylist = true; // Treat array inputs as playlists for event emission
         }
 
         else {
             tracks = [input];
         }
 
+        // Determine if fallback to play-dl is needed (e.g., for SoundCloud/Spotify with Lavalink)
+        const needsFallback = (track: TrackMetadata) =>
+            this.useLavalink && ["soundcloud", "spotify"].includes(track.source);
+
         for (const track of tracks) {
-            if (this.useLavalink && this.manager) {
+            const useFallback = !this.useLavalink || needsFallback(track);
+
+            if (useFallback) {
+                // Fallback to play-dl with AudioPlayer
+                const stream = await this.createStream(track.url);
+                if (!stream) {
+                    const err = new MusicPlayerError(`Failed to create stream for ${track.url}`, "StreamError");
+                    console.error(err.toString());
+                    this.emit(MusicPlayerEvent.Error, err);
+
+                    continue;
+                }
+
+                const resource = createAudioResource(stream, { inlineVolume: true });
+                resource.volume?.setVolume(this.volume / 100);
+                if (!this.player || this.player instanceof Player) {
+                    // Switch to AudioPlayer if currently using Lavalink Player
+                    this.player = createAudioPlayer();
+                    this.player.on("error", err => {
+                        const customErr = new MusicPlayerError(`Player error: ${err.message}`, "PlayerError");
+                        console.error(customErr.toString());
+
+                        this.emit(MusicPlayerEvent.Error, customErr);
+                    });
+
+                    this.player.on(AudioPlayerStatus.Idle, () => this.onIdle());
+                    this.player.on(AudioPlayerStatus.Playing, () => this.clearIdleTimer());
+                    this.join(); // Re-subscribe to AudioPlayer
+                }
+
+                (this.player as AudioPlayer).play(resource);
+                this.queue.push(track);
+                this.emit(MusicPlayerEvent.QueueAdd, {
+                    metadata: track,
+                    queue: this.queue,
+                    ...(isPlaylist && { metadatas: tracks })
+                });
+            }
+
+            else if (this.useLavalink && this.manager) {
                 try {
                     const res = await (this.player as Player).search(track.url);
                     if (res.loadType === "PLAYLIST_LOADED") {
                         res.tracks.forEach(t => (this.player as Player).queue.add(t));
+                        const queue = await this.getQueue();
                         this.emit(MusicPlayerEvent.QueueAdd, {
                             metadatas: res.tracks.map(t => ({
-                                title: t.title,
+                                title: t.title || "Untitled Track",
                                 author: t.author,
                                 duration: t.isStream ? undefined : Math.floor(t.duration / 1000),
                                 thumbnail: t.thumbnail,
                                 source: this.detectSource(t.uri),
                                 url: t.uri
                             })) as TrackMetadata[],
-                            queue: await this.getQueue()
+                            queue
                         });
                     }
 
                     else if (res.loadType === "TRACK_LOADED" || res.loadType === "SEARCH_RESULT") {
+                        const queue = await this.getQueue();
                         (this.player as Player).queue.add(res.tracks[0]);
-                        this.queue.push(track);
-                        this.emit(MusicPlayerEvent.QueueAdd, { metadata: track, queue: await this.getQueue() });
+                        this.queue.push(track); // Sync internal queue
+                        this.emit(MusicPlayerEvent.QueueAdd, {
+                            metadata: track,
+                            queue,
+                            ...(isPlaylist && { metadatas: tracks })
+                        });
                     }
 
                     else {
@@ -652,43 +968,54 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 }
 
                 catch (e) {
-                    const err = new MusicPlayerError(`Failed to load: ${track.url}: ${e}`, "PlayError");
+                    const err = new MusicPlayerError(`Lavalink failed to load ${track.url}: ${e}`, "PlayError");
                     console.error(err.toString());
-                    this.emit(MusicPlayerEvent.Error, err);
 
-                    continue;
+                    // Fallback to play-dl
+                    const stream = await this.createStream(track.url);
+                    if (!stream) {
+                        const streamErr = new MusicPlayerError(`Failed to create stream for ${track.url}`, "StreamError");
+                        console.error(streamErr.toString());
+                        this.emit(MusicPlayerEvent.Error, streamErr);
+                        continue;
+                    }
+
+                    const resource = createAudioResource(stream, { inlineVolume: true });
+                    resource.volume?.setVolume(this.volume / 100);
+                    if (this.player instanceof Player) {
+                        this.player = createAudioPlayer();
+                        this.player.on("error", err => {
+                            const customErr = new MusicPlayerError(`Player error: ${err.message}`, "PlayerError");
+                            console.error(customErr.toString());
+                            this.emit(MusicPlayerEvent.Error, customErr);
+                        });
+                        this.player.on(AudioPlayerStatus.Idle, () => this.onIdle());
+                        this.player.on(AudioPlayerStatus.Playing, () => this.clearIdleTimer());
+                        this.join();
+                    }
+
+                    (this.player as AudioPlayer).play(resource);
+                    this.queue.push(track);
+                    this.emit(MusicPlayerEvent.QueueAdd, {
+                        metadata: track,
+                        queue: this.queue,
+                        ...(isPlaylist && { metadatas: tracks })
+                    });
                 }
-            }
-
-            else {
-                const stream = await this.createStream(track.url);
-                if (!stream) {
-                    const err = new MusicPlayerError(`Failed to create stream for ${track.url}`, "StreamError");
-                    console.error(err.toString());
-                    this.emit(MusicPlayerEvent.Error, err);
-
-                    continue;
-                }
-
-                const resource = createAudioResource(stream, { inlineVolume: true });
-                resource.volume?.setVolume(this.volume / 100);
-                (this.player as AudioPlayer).play(resource);
-                this.queue.push(track);
-                this.emit(MusicPlayerEvent.QueueAdd, { metadata: track, queue: this.queue });
             }
 
             this.history.push(track);
         }
 
         if (!this.playing && !radio) {
-            if (this.useLavalink && this.manager) {
+            if (this.useLavalink && this.manager && this.player instanceof Player) {
                 (this.player as Player).play();
             }
         }
     }
 
     private async createStream(url: string): Promise<Stream.Readable | null> {
-        const retry = async <T>(fn: () => Promise<any>, retries = 3, delay = 1000): Promise<T | null> => {
+        const retry = async <T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> => {
             for (let i = 0; i < retries; i++) {
                 try {
                     return await fn();
@@ -697,24 +1024,25 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 catch (err: any) {
                     if (err.message.includes("429") && i < retries - 1) {
                         await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i)));
+
                         continue;
                     }
 
                     const customErr = new MusicPlayerError(`Stream error for ${url}: ${err.message}`, "StreamError");
                     console.error(customErr.toString());
 
-                    return null;
+                    throw customErr;
                 }
             }
 
             const err = new MusicPlayerError(`Max retries reached for stream: ${url}`, "StreamError");
             console.error(err.toString());
 
-            return null;
+            throw err;
         };
 
         if (playdl.yt_validate(url) === "video") {
-            return await retry<Stream.Readable>(() => playdl.stream(url, { quality: 2 }).then(s => s.stream));
+            return await retry(() => playdl.stream(url, { quality: 2 }).then(s => s.stream));
         }
 
         if (playdl.sp_validate(url) === "track") {
@@ -722,13 +1050,11 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             if (!sp_info) {
                 const err = new MusicPlayerError(`Failed to fetch Spotify info for ${url}`, "StreamError");
                 console.error(err.toString());
-
                 return null;
             }
 
-            const search = await retry<YouTubeVideo[]>(() => playdl.search(`${sp_info.name} ${sp_info.artists[0]?.name || ""}`, { limit: 1 }));
-
-            if (search && search.length > 0) {
+            const search = await retry(() => playdl.search(`${sp_info.name} ${sp_info.artists[0]?.name || ""}`, { limit: 1 }));
+            if (search.length > 0) {
                 return await retry(() => playdl.stream(search[0].url, { quality: 2 }).then(s => s.stream));
             }
         }
@@ -742,12 +1068,11 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             if (!dz_info) {
                 const err = new MusicPlayerError(`Failed to fetch Deezer info for ${url}`, "StreamError");
                 console.error(err.toString());
-
                 return null;
             }
 
-            const search = await retry<YouTubeVideo[]>(() => playdl.search(`${dz_info.title} ${dz_info.artist?.name || ""}`, { limit: 1 }));
-            if (search && search.length > 0) {
+            const search = await retry(() => playdl.search(`${dz_info.title} ${dz_info.artist?.name || ""}`, { limit: 1 }));
+            if (search.length > 0) {
                 return await retry(() => playdl.stream(search[0].url, { quality: 2 }).then(s => s.stream));
             }
         }
@@ -809,7 +1134,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         if (this.useLavalink && this.manager) {
             if (this.loopQueue && (this.player as Player).queue.size === 0 && (this.player as Player).queue.previous) {
                 (this.player as Player).queue.add((this.player as Player).queue.previous!);
-                (this.player as Player).play();
+                await (this.player as Player).play();
 
                 return;
             }
@@ -849,7 +1174,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             this.history.push({ url: current } as TrackMetadata);
         }
 
-        this.emit(MusicPlayerEvent.Skip, { queue: await this.getQueue(), history: this.history.map(h => h.url) });
+        const queue = await this.getQueue();
+        this.emit(MusicPlayerEvent.Skip, { queue, history: this.history.map(h => h.url) });
         if (this.useLavalink && this.manager) {
             (this.player as Player).stop();
         }
@@ -863,15 +1189,18 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     public async previous() {
         if (this.history.length < 1) {
             const err = new MusicPlayerError("No previous track.", "PreviousError");
-            console.error(err.toString());
+            if (this.options.logError)
+                console.error(err.toString());
+
             this.emit(MusicPlayerEvent.Error, err);
 
             return;
         }
 
+        const queue = await this.getQueue();
         const prev = this.history.pop()!;
         await this.play(prev);
-        this.emit(MusicPlayerEvent.Previous, { metadata: prev, queue: await this.getQueue(), history: this.history.map(h => h.url) });
+        this.emit(MusicPlayerEvent.Previous, { metadata: prev, queue, history: this.history.map(h => h.url) });
     }
 
     public async shuffle() {
@@ -979,7 +1308,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             const queue = (this.player as Player).queue;
             const tracks: TrackMetadata[] = [];
             for (const track of queue) {
-                tracks.push(await this.extractMetadata(track.uri!));
+                const metadata = await this.extractMetadata(track.uri!);
+                tracks.push(metadata);
             }
 
             return tracks;

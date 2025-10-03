@@ -50,22 +50,33 @@ export interface VoiceChannel {
     };
 }
 
+export interface PlaylistMetadata {
+    title: string | undefined;
+    trackCount: number;
+    thumbnail: string | undefined;
+    source: Source;
+    url: string;
+}
+
 export interface TrackMetadata {
     title: string | undefined;
     author: string | undefined;
     duration: number | undefined; // seconds
     thumbnail: string | undefined;
-    source: "youtube" | "soundcloud" | "spotify" | "deezer" | "unknown";
+    source: Source;
     url: string;
 }
 
 export type SearchPlatform = "youtube" | "spotify" | "soundcloud" | "deezer";
+
+export type Source = "youtube" | "soundcloud" | "spotify" | "deezer" | "unknown";
 
 export interface MusicPlayerOptions {
     initialVolume?: number;
     autoLeaveOnEmptyQueue?: boolean;
     autoLeaveOnIdleMs?: number;
     youtubeCookie?: string;
+    logError?: boolean;
 }
 
 export interface TextChannel {
