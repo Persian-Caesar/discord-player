@@ -17,7 +17,9 @@ A lightweight, type-safe music player for Discord bots, built with TypeScript an
     - [MusicPlayer Class](#musicplayer-class)
     - [MusicPlayerEvent Enum](#musicplayerevent-enum)
     - [Method Usage and Examples](#method-usage-and-examples)
-      - [`search(query: string, platform?: SearchPlatform): Promise<TrackMetadata[]>`](#searchquery-string-platform-searchplatform-promisetrackmetadata)
+      - [`isPlaylist(url: string): Promise<boolean>`](#isplaylisturl-string-promiseboolean)
+      - [`searchPlaylists(query: string, platform?: SearchPlatform, limit?: number): Promise<PlaylistMetadata[]>`](#searchplaylistsquery-string-platform-searchplatform-limit-number-promiseplaylistmetadata)
+      - [`search(query: string, platform?: SearchPlatform, limit?: number): Promise<TrackMetadata[]>`](#searchquery-string-platform-searchplatform-limit-number-promisetrackmetadata)
       - [`play(input: string | TrackMetadata | TrackMetadata[], radio?: boolean): Promise<void>`](#playinput-string--trackmetadata--trackmetadata-radio-boolean-promisevoid)
       - [`pause(): void`](#pause-void)
       - [`resume(): void`](#resume-void)
@@ -52,7 +54,7 @@ Developed by [Sobhan-SRZA](https://github.com/Sobhan-SRZA) for [Persian Caesar](
 - **Optional Lavalink Support**: Use Erela.js for advanced features like playlist loading and better audio handling, or fallback to direct streaming without it.
 - **Multi-Platform Search and Streaming**: Supports YouTube, SoundCloud, Spotify, and Deezer. Search prioritizes platforms in order (configurable), returns a list of results.
 - **Direct Stream Handling**: Streams non-platform URLs (e.g., radio stations) directly without searching.
-- **Playlist Support**: When using Lavalink, automatically loads and enqueues tracks from playlists.
+- **Playlist Support**: Detect, search, and load playlists from all supported platforms, automatically enqueues tracks.
 - **Queue Management**: Add tracks (single or multiple), shuffle, or revert to the original order.
 - **Looping Options**: Toggle looping for a single track or the entire queue.
 - **Volume Control**: Adjust playback volume (0–200%).
@@ -75,22 +77,21 @@ Ensure you have Node.js version 16 or higher, as specified in `package.json`.
 ## Dependencies
 The following dependencies are required for the package to function correctly:
 
-| Package                 | Version | Purpose                                                                   |
-| ----------------------- | ------- | ------------------------------------------------------------------------- |
-| `@discordjs/voice`      | ^0.18.0 | Handles voice channel connections and audio playback in Discord.          |
-| `@discordjs/opus`       | ^0.10.0 | Provides Opus audio encoding/decoding for high-quality audio streaming.   |
-| `erela.js`              | ^2.4.0  | Optional: Access to Lavalink for enhanced audio and playlist support.     |
+| Package                 | Version | Purpose                                                                                   |
+| ----------------------- | ------- | ----------------------------------------------------------------------------------------- |
+| `@discordjs/voice`      | ^0.18.0 | Handles voice channel connections and audio playback in Discord.                          |
+| `@discordjs/opus`       | ^0.10.0 | Provides Opus audio encoding/decoding for high-quality audio streaming.                   |
+| `erela.js`              | ^2.4.0  | Optional: Access to Lavalink for enhanced audio and playlist support.                     |
 | `play-dl`               | ^1.9.7  | Streams audio from Spotify, YouTube, and Deezer with search capabilities (fallback mode). |
-| `soundcloud-downloader` | ^1.0.0  | Downloads and streams audio from SoundCloud URLs (fallback mode).         |
-| `yt-dlp-exec`           | ^3.0.0  | Executes yt-dlp for YouTube streaming in fallback mode.                   |
-| `html-to-text`          | ^9.0.5  | Converts HTML (from Google lyrics searches) to plain text.                |
-| `libsodium-wrappers`    | ^0.7.15 | Required for secure audio encryption in `@discordjs/voice`.               |
-| `ffmpeg-static`         | (peer)  | Provides FFmpeg for audio processing and stream conversion.               |
+| `soundcloud-downloader` | ^1.0.0  | Downloads and streams audio from SoundCloud URLs (fallback mode).                         |
+| `html-to-text`          | ^9.0.5  | Converts HTML (from Google lyrics searches) to plain text.                                |
+| `libsodium-wrappers`    | ^0.7.15 | Required for secure audio encryption in `@discordjs/voice`.                               |
+| `ffmpeg-static`         | (peer)  | Provides FFmpeg for audio processing and stream conversion.                               |
 
 **Why these dependencies?**
 - `@discordjs/voice` and `@discordjs/opus` are core to Discord voice functionality, enabling the bot to join channels and stream audio.
 - `erela.js` enables optional Lavalink integration for better scalability.
-- `play-dl`, `soundcloud-downloader`, and `yt-dlp-exec` provide fallback streaming without Lavalink.
+- `play-dl` and `soundcloud-downloader` provide fallback streaming without Lavalink.
 - `html-to-text` is used for scraping and cleaning lyrics from Google search results.
 - `libsodium-wrappers` and `ffmpeg-static` are required for secure and efficient audio processing.
 
@@ -102,8 +103,7 @@ This example uses Lavalink for playlist support and better performance.
 
 ```typescript
 import { Client, GatewayIntentBits, TextChannel, VoiceChannel } from 'discord.js';
-import { MusicPlayer, MusicPlayerEvent } from '@persian-caesar/discord-player';
-import { Manager } from 'erela.js';
+import { MusicPlayer, MusicPlayerEvent, LavalinkManager } from '@persian-caesar/discord-player';
 
 // Initialize Discord client with necessary intents
 const client = new Client({
@@ -111,24 +111,20 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+    GatewayIntentBits.MessageContent
+  ]
 });
 
 // Initialize Erela.js Manager for Lavalink
-const manager = new Manager({
+const manager = new LavalinkManager(client, {
   nodes: [
     {
-      host: "lava-all.ajieblogs.eu.org",
+      host: "lava-v4.ajieblogs.eu.org",
       port: 443,
       password: "https://dsc.gg/ajidevserver",
-      secure: true,
-    },
-  ],
-  send: (id, payload) => {
-    const guild = client.guilds.cache.get(id);
-    if (guild) guild.shard.send(payload);
-  },
+      secure: true
+    }
+  ]
 });
 
 // Bot configuration
@@ -137,11 +133,7 @@ const TOKEN = 'YOUR_BOT_TOKEN'; // Replace with your bot token
 
 client.on('ready', () => {
   console.log(`Logged in as ${client.user?.tag}`);
-  manager.init(client.user!.id);
 });
-
-client.ws.on('VOICE_SERVER_UPDATE', (data) => manager.updateVoiceState(data));
-client.ws.on('VOICE_STATE_UPDATE', (data) => manager.updateVoiceState(data));
 
 client.on('messageCreate', async (message) => {
   if (!message.content.startsWith(PREFIX) || message.author.bot) return;
@@ -152,9 +144,9 @@ client.on('messageCreate', async (message) => {
   if (!message.guild || !message.member?.voice.channel) return;
 
   const voiceChannel = message.member.voice.channel as VoiceChannel;
-  const player = new MusicPlayer(voiceChannel, message.channel as TextChannel, 100, manager, {
+  const player = new MusicPlayer(voiceChannel, message.channel as TextChannel, manager, {
     autoLeaveOnEmptyQueue: true,
-    autoLeaveOnIdleMs: 300_000, // 5 minutes
+    autoLeaveOnIdleMs: 300_000 // 5 minutes
   });
 
   // Event listeners for music player
@@ -162,8 +154,9 @@ client.on('messageCreate', async (message) => {
     message.channel.send(`▶️ Now playing: ${metadata.title || metadata.url}`);
   });
 
-  player.on(MusicPlayerEvent.QueueAdd, ({ metadata, queue }) => {
-    message.channel.send(`➕ Added to queue: ${metadata?.title || metadata?.url || 'playlist'} (${queue.length} in queue)`);
+  player.on(MusicPlayerEvent.QueueAdd, ({ metadata, metadatas, queue }) => {
+    const added = metadatas ? metadatas.length + ' tracks' : metadata?.title || metadata?.url;
+    message.channel.send(`➕ Added: ${added} (${queue.length} in queue)`);
   });
 
   player.on(MusicPlayerEvent.Error, (error) => {
@@ -181,18 +174,28 @@ client.on('messageCreate', async (message) => {
       message.channel.send('Please provide a URL or search query.');
       return;
     }
-    // Search and play the first result
-    const results = await player.search(query);
-    if (results.length > 0) {
-      await player.play(results[0]);
-    } else {
-      message.channel.send('No results found.');
-    }
-  } else if (command === 'search') {
+
+    await player.play(query);
+  } 
+  
+  else if (command === 'search') {
     const query = args.join(' ');
-    const results = await player.search(query);
+    const results = await player.search(query, 'youtube');
     const resultList = results.map((r, i) => `${i + 1}. ${r.title || r.url}`).join('\n');
     message.channel.send(resultList || 'No results.');
+  }
+  
+  else if (command === 'playlists') {
+    const query = args.join(' ');
+    const playlists = await player.searchPlaylists(query, 'spotify');
+    const list = playlists.map((p, i) => `${i + 1}. ${p.title} (${p.trackCount} tracks): ${p.url}`).join('\n');
+    message.channel.send(list || 'No playlists found.');
+  } 
+  
+  else if (command === 'isplaylist') {
+    const url = args[0];
+    const isPlaylist = await player.isPlaylist(url);
+    message.channel.send(isPlaylist ? 'Yes, this is a playlist.' : 'No, this is not a playlist.');
   } // Add other commands as needed
 });
 
@@ -212,8 +215,8 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+    GatewayIntentBits.MessageContent
+  ]
 });
 
 // Bot configuration
@@ -233,7 +236,7 @@ client.on('messageCreate', async (message) => {
   if (!message.guild || !message.member?.voice.channel) return;
 
   const voiceChannel = message.member.voice.channel as VoiceChannel;
-  const player = new MusicPlayer(voiceChannel, message.channel as TextChannel, 100, undefined, {
+  const player = new MusicPlayer(voiceChannel, message.channel as TextChannel, undefined, {
     autoLeaveOnEmptyQueue: true,
     autoLeaveOnIdleMs: 300_000, // 5 minutes
     youtubeCookie: 'YOUR_YOUTUBE_COOKIE', // Optional for age-restricted content
@@ -244,8 +247,9 @@ client.on('messageCreate', async (message) => {
     message.channel.send(`▶️ Now playing: ${metadata.title || metadata.url}`);
   });
 
-  player.on(MusicPlayerEvent.QueueAdd, ({ metadata, queue }) => {
-    message.channel.send(`➕ Added to queue: ${metadata?.title || metadata?.url} (${queue.length} in queue)`);
+  player.on(MusicPlayerEvent.QueueAdd, ({ metadata, metadatas, queue }) => {
+    const added = metadatas ? metadatas.length + ' tracks' : metadata?.title || metadata?.url;
+    message.channel.send(`➕ Added: ${added} (${queue.length} in queue)`);
   });
 
   player.on(MusicPlayerEvent.Error, (error) => {
@@ -263,18 +267,27 @@ client.on('messageCreate', async (message) => {
       message.channel.send('Please provide a URL or search query.');
       return;
     }
-    // Search and play the first result
-    const results = await player.search(query);
-    if (results.length > 0) {
-      await player.play(results[0]);
-    } else {
-      message.channel.send('No results found.');
-    }
-  } else if (command === 'search') {
+    await player.play(query);
+  } 
+  
+  else if (command === 'search') {
     const query = args.join(' ');
     const results = await player.search(query, 'spotify'); // Optional platform
     const resultList = results.map((r, i) => `${i + 1}. ${r.title || r.url}`).join('\n');
     message.channel.send(resultList || 'No results.');
+  }
+  
+  else if (command === 'playlists') {
+    const query = args.join(' ');
+    const playlists = await player.searchPlaylists(query, 'deezer');
+    const list = playlists.map((p, i) => `${i + 1}. ${p.title} (${p.trackCount} tracks): ${p.url}`).join('\n');
+    message.channel.send(list || 'No playlists found.');
+  }
+  
+  else if (command === 'isplaylist') {
+    const url = args[0];
+    const isPlaylist = await player.isPlaylist(url);
+    message.channel.send(isPlaylist ? 'Yes, this is a playlist.' : 'No, this is not a playlist.');
   } // Add other commands as needed
 });
 
@@ -286,24 +299,7 @@ This example uses plain JavaScript with optional Lavalink.
 
 ```javascript
 const { Client, GatewayIntentBits } = require('discord.js');
-const { MusicPlayer, MusicPlayerEvent } = require('@persian-caesar/discord-player');
-const { Manager } = require('erela.js');
-
-// Optional Lavalink Manager
-const manager = new Manager({
-  nodes: [
-    {
-      host: "lava-all.ajieblogs.eu.org",
-      port: 443,
-      password: "https://dsc.gg/ajidevserver",
-      secure: true,
-    },
-  ],
-  send: (id, payload) => {
-    const guild = client.guilds.cache.get(id);
-    if (guild) guild.shard.send(payload);
-  },
-});
+const { MusicPlayer, MusicPlayerEvent, LavalinkManager } = require('@persian-caesar/discord-player');
 
 // Initialize Discord client with necessary intents
 const client = new Client({
@@ -311,8 +307,20 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+    GatewayIntentBits.MessageContent
+  ]
+});
+  
+// Optional Lavalink Manager
+const manager = new LavalinkManager(client, {
+  nodes: [
+    {
+      host: "lava-v4.ajieblogs.eu.org",
+      port: 443,
+      password: "https://dsc.gg/ajidevserver",
+      secure: true
+    }
+  ]
 });
 
 // Bot configuration
@@ -321,13 +329,7 @@ const TOKEN = 'YOUR_BOT_TOKEN'; // Replace with your bot token
 
 client.on('ready', () => {
   console.log(`Logged in as ${client.user?.tag}`);
-  if (manager) manager.init(client.user.id); // If using Lavalink
 });
-
-if (manager) {
-  client.ws.on('VOICE_SERVER_UPDATE', (data) => manager.updateVoiceState(data));
-  client.ws.on('VOICE_STATE_UPDATE', (data) => manager.updateVoiceState(data));
-}
 
 client.on('messageCreate', async (message) => {
   if (!message.content.startsWith(PREFIX) || message.author.bot) return;
@@ -339,9 +341,9 @@ client.on('messageCreate', async (message) => {
 
   /** @type {import('@persian-caesar/discord-player').VoiceChannel} */
   const voiceChannel = message.member.voice.channel;
-  const player = new MusicPlayer(voiceChannel, message.channel, 100, manager, { // Pass manager if using Lavalink
+  const player = new MusicPlayer(voiceChannel, message.channel, manager, { // Pass manager if using Lavalink
     autoLeaveOnEmptyQueue: true,
-    autoLeaveOnIdleMs: 300_000, // 5 minutes
+    autoLeaveOnIdleMs: 300_000 // 5 minutes
   });
 
   // Event listeners for music player
@@ -349,8 +351,9 @@ client.on('messageCreate', async (message) => {
     message.channel.send(`▶️ Now playing: ${metadata.title || metadata.url}`);
   });
 
-  player.on(MusicPlayerEvent.QueueAdd, ({ metadata, queue }) => {
-    message.channel.send(`➕ Added to queue: ${metadata?.title || metadata?.url || 'playlist'} (${queue.length} in queue)`);
+  player.on(MusicPlayerEvent.QueueAdd, ({ metadata, metadatas, queue }) => {
+    const added = metadatas ? metadatas.length + ' tracks' : metadata?.title || metadata?.url;
+    message.channel.send(`➕ Added: ${added} (${queue.length} in queue)`);
   });
 
   player.on(MusicPlayerEvent.Error, (error) => {
@@ -368,18 +371,28 @@ client.on('messageCreate', async (message) => {
       message.channel.send('Please provide a URL or search query.');
       return;
     }
-    // Search and play the first result
-    const results = await player.search(query);
-    if (results.length > 0) {
-      await player.play(results[0]);
-    } else {
-      message.channel.send('No results found.');
-    }
-  } else if (command === 'search') {
+
+    await player.play(query);
+  } 
+  
+  else if (command === 'search') {
     const query = args.join(' ');
     const results = await player.search(query);
     const resultList = results.map((r, i) => `${i + 1}. ${r.title || r.url}`).join('\n');
     message.channel.send(resultList || 'No results.');
+  }
+  
+  else if (command === 'playlists') {
+    const query = args.join(' ');
+    const playlists = await player.searchPlaylists(query);
+    const list = playlists.map((p, i) => `${i + 1}. ${p.title} (${p.trackCount} tracks): ${p.url}`).join('\n');
+    message.channel.send(list || 'No playlists found.');
+  } 
+  
+  else if (command === 'isplaylist') {
+    const url = args[0];
+    const isPlaylist = await player.isPlaylist(url);
+    message.channel.send(isPlaylist ? 'Yes, this is a playlist.' : 'No, this is not a playlist.');
   } // Add other commands as needed
 });
 
@@ -394,37 +407,38 @@ client.login(TOKEN);
 new MusicPlayer(
   channel: VoiceChannel,
   textChannel: TextChannel,
-  initialVolume?: number, // Default: 100
   lavaLinkManager?: Manager, // Optional Erela.js Manager for Lavalink
-  options?: MusicPlayerOptions // { autoLeaveOnEmptyQueue?: boolean, autoLeaveOnIdleMs?: number, youtubeCookie?: string }
+  options?: MusicPlayerOptions // { initialVolume?: number, autoLeaveOnEmptyQueue?: boolean, autoLeaveOnIdleMs?: number, youtubeCookie?: string, logError?: boolean }
 )
 ```
 
 **Methods**:
-| Method                                         | Description                                                |
-| ---------------------------------------------- | ---------------------------------------------------------- |
-| `search(query: string, platform?: SearchPlatform): Promise<TrackMetadata[]>` | Searches across platforms, returns list of results. |
-| `play(input: string | TrackMetadata | TrackMetadata[], radio?: boolean): Promise<void>` | Plays input (string searches first result, metadata/array direct). Supports playlists with Lavalink. |
-| `pause(): void`                                | Pauses the current track.                                  |
-| `resume(): void`                               | Resumes playback.                                          |
-| `setVolume(percent: number): number`           | Sets volume (0–200%), returns new volume.                  |
-| `skip(): void`                                 | Skips to the next track in the queue.                      |
-| `previous(): Promise<void>`                    | Plays the previous track from history.                     |
-| `shuffle(): void`                              | Shuffles the queue, saving the original order.             |
-| `undoShuffle(): void`                          | Restores the queue to its pre-shuffle order.               |
-| `toggleLoopQueue(): boolean`                   | Toggles queue looping, returns new state.                  |
-| `toggleLoopTrack(): boolean`                   | Toggles single-track looping, returns new state.           |
-| `startRadio(urls: string[]): Promise<void>`    | Starts radio mode with shuffled URLs.                      |
-| `stop(noLeave?: boolean): void`                | Stops playback, optionally disconnects.                    |
-| `disconnect(): void`                           | Disconnects from the voice channel.                        |
-| `join(): VoiceConnection`                      | Joins the voice channel without subscribing player.        |
-| `getQueue(): TrackMetadata[]`                  | Returns a copy of the current queue.                       |
-| `getVolume(): number`                          | Returns the current volume (0–200%).                       |
-| `isPlaying(): boolean`                         | Checks if a track is playing.                              |
-| `isPaused(): boolean`                          | Checks if playback is paused.                              |
-| `isShuffiled(): boolean`                       | Checks if the queue is shuffled.                           |
-| `isConnected(guildId?: string): boolean`       | Checks if connected to a voice channel.                    |
-| `searchLyrics(title: string, artist?: string): Promise<string | null>` | Fetches song lyrics from Google.                           |
+| Method                                                                                                   | Description                                         |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `isPlaylist(url: string): Promise<boolean>`                                                              | Checks if the given URL is a playlist.              |
+| `searchPlaylists(query: string, platform?: SearchPlatform, limit?: number): Promise<PlaylistMetadata[]>` | Searches for playlists across platforms.            |
+| `search(query: string, platform?: SearchPlatform, limit?: number): Promise<TrackMetadata[]>`             | Searches for tracks across platforms.               |
+| `play(input: string                                                                                      | TrackMetadata                                       | TrackMetadata[], radio?: boolean): Promise<void>` | Plays input (string searches first result or loads playlist, metadata/array direct). Supports playlists. |
+| `pause(): void`                                                                                          | Pauses the current track.                           |
+| `resume(): void`                                                                                         | Resumes playback.                                   |
+| `setVolume(percent: number): number`                                                                     | Sets volume (0–200%), returns new volume.           |
+| `skip(): void`                                                                                           | Skips to the next track in the queue.               |
+| `previous(): Promise<void>`                                                                              | Plays the previous track from history.              |
+| `shuffle(): void`                                                                                        | Shuffles the queue, saving the original order.      |
+| `undoShuffle(): void`                                                                                    | Restores the queue to its pre-shuffle order.        |
+| `toggleLoopQueue(): boolean`                                                                             | Toggles queue looping, returns new state.           |
+| `toggleLoopTrack(): boolean`                                                                             | Toggles single-track looping, returns new state.    |
+| `startRadio(urls: string[]): Promise<void>`                                                              | Starts radio mode with shuffled URLs.               |
+| `stop(noLeave?: boolean): void`                                                                          | Stops playback, optionally disconnects.             |
+| `disconnect(): void`                                                                                     | Disconnects from the voice channel.                 |
+| `join(): VoiceConnection`                                                                                | Joins the voice channel without subscribing player. |
+| `getQueue(): TrackMetadata[]`                                                                            | Returns a copy of the current queue.                |
+| `getVolume(): number`                                                                                    | Returns the current volume (0–200%).                |
+| `isPlaying(): boolean`                                                                                   | Checks if a track is playing.                       |
+| `isPaused(): boolean`                                                                                    | Checks if playback is paused.                       |
+| `isShuffiled(): boolean`                                                                                 | Checks if the queue is shuffled.                    |
+| `isConnected(guildId?: string): boolean`                                                                 | Checks if connected to a voice channel.             |
+| `searchLyrics(title: string, artist?: string): Promise<string                                            | null>`                                              | Fetches song lyrics from Google.                  |
 
 ### MusicPlayerEvent Enum
 ```typescript
@@ -464,14 +478,43 @@ See `types.ts` for full type definitions.
 ### Method Usage and Examples
 This section provides detailed explanations and code snippets for each `MusicPlayer` method, demonstrating their usage within a Discord bot context using `discord.js`. The examples assume a `MusicPlayer` instance is created as shown in the [Usage Examples](#usage-examples) section.
 
-#### `search(query: string, platform?: SearchPlatform): Promise<TrackMetadata[]>`
-Searches for tracks across platforms. Returns a list of results. Platform order: With Lavalink - YouTube, Spotify, SoundCloud, Deezer; without - Spotify, SoundCloud, YouTube, Deezer. Direct non-platform URLs return a single direct stream metadata.
+#### `isPlaylist(url: string): Promise<boolean>`
+Checks if the given URL is a playlist.
+
+**Example**:
+```typescript
+if (command === 'isplaylist') {
+  const url = args[0];
+  const isPlaylist = await player.isPlaylist(url);
+  message.channel.send(isPlaylist ? 'Yes, this is a playlist.' : 'No, this is not a playlist.');
+}
+```
+
+#### `searchPlaylists(query: string, platform?: SearchPlatform, limit?: number): Promise<PlaylistMetadata[]>`
+Searches for playlists across platforms.
+
+**Example**:
+```typescript
+if (command === 'playlists') {
+  const query = args.join(' ');
+  const playlists = await player.searchPlaylists(query, 'spotify', 5);
+  if (playlists.length === 0) {
+    message.channel.send('No playlists found.');
+    return;
+  }
+  const list = playlists.map((p, i) => `${i + 1}. ${p.title} (${p.trackCount} tracks): ${p.url}`).join('\n');
+  message.channel.send(`Playlists:\n${list}`);
+}
+```
+
+#### `search(query: string, platform?: SearchPlatform, limit?: number): Promise<TrackMetadata[]>`
+Searches for tracks across platforms.
 
 **Example**:
 ```typescript
 if (command === 'search') {
   const query = args.join(' ');
-  const results = await player.search(query, 'youtube'); // Optional platform
+  const results = await player.search(query, 'youtube', 5);
   if (results.length === 0) {
     message.channel.send('No results found.');
     return;
@@ -482,7 +525,7 @@ if (command === 'search') {
 ```
 
 #### `play(input: string | TrackMetadata | TrackMetadata[], radio?: boolean): Promise<void>`
-Plays input. If string, searches and plays first result. If TrackMetadata or array, plays directly. Supports playlists with Lavalink.
+Plays input. If string, searches and plays first result or loads playlist. If TrackMetadata or array, plays directly.
 
 **Example**:
 ```typescript
@@ -492,17 +535,7 @@ if (command === 'play') {
     message.channel.send('Please provide a URL or search query.');
     return;
   }
-  // Option 1: Play string (searches automatically)
   await player.play(query);
-
-  // Option 2: Search first, then play specific result
-  const results = await player.search(query);
-  if (results.length > 0) {
-    await player.play(results[0]); // Play first
-    // or player.play(results); // Play all as playlist (with Lavalink)
-  } else {
-    message.channel.send('No results found.');
-  }
 }
 player.on(MusicPlayerEvent.Start, ({ metadata }) => {
   message.channel.send(`▶️ Now playing: ${metadata.title || metadata.url}`);

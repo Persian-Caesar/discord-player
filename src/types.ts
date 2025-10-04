@@ -1,3 +1,5 @@
+import { ManagerOptions, Payload } from "erela.js";
+
 export enum MusicPlayerEvent {
     Start = "start",
     QueueAdd = "queueAdd",
@@ -91,7 +93,26 @@ export interface Client {
     ws: {
         on(event: GatewayDispatchEvents, listener: (data: any) => void): void;
     };
+    guilds: {
+        cache: Map<string, Guild>;
+        get(id: string): Guild | undefined;
+    };
 }
+
+// --- Guild and Shard typings ---
+export interface Guild {
+    id: string;
+    shard: Shard;
+}
+
+export interface Shard {
+    send(payload: Payload): void;
+}
+
+// --- ManagerOptions with optional send ---
+export type LavalinkManagerOptions = Omit<ManagerOptions, "send"> & {
+    send?: (id: string, payload: Payload) => void;
+};
 
 export enum GatewayDispatchEvents {
     VoiceServerUpdate = "VOICE_SERVER_UPDATE",

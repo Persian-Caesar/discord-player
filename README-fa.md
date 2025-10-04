@@ -1,120 +1,138 @@
 # @persian-caesar/discord-player
 
-یک پخش‌کننده موسیقی سبک و نوع‌امن برای ربات‌های خودکار دیسکورد، ساخته شده با تایپ‌اسکریپت و یکپارچه با `discord.js`. این بسته شامل کلاس قدرتمند `MusicPlayer` برای پخش صوتی از پلتفرم‌هایی مانند یوتیوب، ساندکلاد، اسپاتیفای و دیزر است، با قابلیت‌هایی نظیر مدیریت صف، تکرار، به‌هم‌ریختن (شافل) و دریافت متن آهنگ.
+یک پخش‌کننده موسیقی سبک و ایمن برای بات‌های دیسکورد، ساخته‌شده با TypeScript و یکپارچه با `discord.js`. این بسته یک کلاس قدرتمند `MusicPlayer` برای پخش صوت از پلتفرم‌هایی مانند یوتیوب، ساندکلاد، اسپاتیفای و دیزر ارائه می‌دهد، با پشتیبانی اختیاری از Lavalink از طریق Erela.js برای عملکرد بهتر و مدیریت لیست پخش. بدون Lavalink، پخش مستقیم با استفاده از کتابخانه‌هایی مانند `play-dl`، `soundcloud-downloader` و `yt-dlp-exec` انجام می‌شود.
 
 ## فهرست مطالب
 - [@persian-caesar/discord-player](#persian-caesardiscord-player)
   - [فهرست مطالب](#فهرست-مطالب)
-  - [معرفی](#معرفی)
-  - [ویژگی‌ها](#ویژگی‌ها)
+  - [مقدمه](#مقدمه)
+  - [ویژگی‌ها](#ویژگیها)
   - [نصب](#نصب)
-  - [وابستگی‌ها](#وابستگی‌ها)
-  - [نمونه‌های استفاده](#نمونه‌های-استفاده)
-    - [نمونه تایپ‌اسکریپت](#نمونه-تایپ‌اسکریپت)
-    - [نمونه جاوااسکریپت](#نمونه-جاوااسکریپت)
+  - [وابستگی‌ها](#وابستگیها)
+  - [نمونه‌های استفاده](#نمونههای-استفاده)
+    - [نمونه TypeScript با Lavalink](#نمونه-typescript-با-lavalink)
+    - [نمونه TypeScript بدون Lavalink](#نمونه-typescript-بدون-lavalink)
+    - [نمونه JavaScript](#نمونه-javascript)
   - [مرجع API](#مرجع-api)
     - [کلاس MusicPlayer](#کلاس-musicplayer)
-    - [شمارنده MusicPlayerEvent](#شمارنده-musicplayerevent)
-    - [استفاده و نمونه‌های متدها](#استفاده-و-نمونه‌های-متدها)
-      - [`play(input: string): Promise<void>`](#playinput-string-promisevoid)
+    - [شمارش MusicPlayerEvent](#شمارش-musicplayerevent)
+    - [استفاده و نمونه‌های متدها](#استفاده-و-نمونههای-متدها)
+      - [`isPlaylist(url: string): Promise<boolean>`](#isplaylisturl-string-promiseboolean)
+      - [`searchPlaylists(query: string, platform?: SearchPlatform, limit?: number): Promise<PlaylistMetadata[]>`](#searchplaylistsquery-string-platform-searchplatform-limit-number-promiseplaylistmetadata)
+      - [`search(query: string, platform?: SearchPlatform, limit?: number): Promise<TrackMetadata[]>`](#searchquery-string-platform-searchplatform-limit-number-promisetrackmetadata)
+      - [`play(input: string | TrackMetadata | TrackMetadata[], radio?: boolean): Promise<void>`](#playinput-string--trackmetadata--trackmetadata-radio-boolean-promisevoid)
       - [`pause(): void`](#pause-void)
       - [`resume(): void`](#resume-void)
-      - [`setVolume(percent: number): void`](#setvolumepercent-number-void)
+      - [`setVolume(percent: number): number`](#setvolumepercent-number-number)
       - [`skip(): void`](#skip-void)
       - [`previous(): Promise<void>`](#previous-promisevoid)
       - [`shuffle(): void`](#shuffle-void)
       - [`undoShuffle(): void`](#undoshuffle-void)
-      - [`toggleLoopQueue(): void`](#toggleloopqueue-void)
-      - [`toggleLoopTrack(): void`](#togglelooptrack-void)
+      - [`toggleLoopQueue(): boolean`](#toggleloopqueue-boolean)
+      - [`toggleLoopTrack(): boolean`](#togglelooptrack-boolean)
       - [`startRadio(urls: string[]): Promise<void>`](#startradiourls-string-promisevoid)
       - [`stop(noLeave?: boolean): void`](#stopnoleave-boolean-void)
       - [`disconnect(): void`](#disconnect-void)
+      - [`join(): VoiceConnection`](#join-voiceconnection)
       - [`getQueue(): TrackMetadata[]`](#getqueue-trackmetadata)
       - [`getVolume(): number`](#getvolume-number)
       - [`isPlaying(): boolean`](#isplaying-boolean)
       - [`isPaused(): boolean`](#ispaused-boolean)
       - [`isShuffiled(): boolean`](#isshuffiled-boolean)
+      - [`isConnected(guildId?: string): boolean`](#isconnectedguildid-string-boolean)
       - [`searchLyrics(title: string, artist?: string): Promise<string | null>`](#searchlyricstitle-string-artist-string-promisestring--null)
   - [پشتیبانی و مشارکت](#پشتیبانی-و-مشارکت)
   - [مجوز](#مجوز)
   - [تماس](#تماس)
 
-## معرفی
-`@persian-caesar/discord-player` برای ساده‌سازی پخش صوتی در ربات‌های دیسکورد طراحی شده است. این بسته از کتابخانه `@discordjs/voice` برای تعامل با کانال‌های صوتی استفاده می‌کند و از پخش از پلتفرم‌های متعددی مانند یوتیوب، ساندکلاد، اسپاتیفای و دیزر پشتیبانی می‌کند، با استفاده از کتابخانه‌هایی مانند `ytdl-core`، `play-dl` و `soundcloud-downloader`. این بسته کاملاً نوع‌بندی شده است و برای پروژه‌های تایپ‌اسکریپت ایده‌آل است، همچنین شامل حاشیه‌نویسی‌های JSDoc برای کاربران جاوااسکریپت می‌باشد. کلاس `MusicPlayer` تمام جنبه‌های پخش موسیقی، از جمله مدیریت صف، ردیابی تاریخچه و اعلان‌های مبتنی بر رویداد را مدیریت می‌کند.
+## مقدمه
+`@persian-caesar/discord-player` برای ساده‌سازی پخش صوت در بات‌های دیسکورد طراحی شده است. این بسته از کتابخانه `@discordjs/voice` برای تعامل با کانال‌های صوتی استفاده می‌کند و از پخش از چندین پلتفرم پشتیبانی می‌کند. ادغام اختیاری با Lavalink (از طریق Erela.js) برای مقیاس‌پذیری بهتر، پشتیبانی از لیست پخش و عملکرد بهبودیافته ارائه می‌شود. بدون Lavalink، پخش‌کننده از پخش مستقیم برای انعطاف‌پذیری در تنظیمات کوچک‌تر استفاده می‌کند. این بسته کاملاً تایپ‌شده است و برای پروژه‌های TypeScript ایده‌آل است، همچنین شامل حاشیه‌نویسی‌های JSDoc برای کاربران JavaScript می‌باشد. کلاس `MusicPlayer` تمام جنبه‌های پخش موسیقی، از جمله جستجوی چندپلتفرمی، مدیریت صف، ردیابی تاریخچه و اعلان‌های مبتنی بر رویداد را مدیریت می‌کند.
 
 این بسته توسط [Sobhan-SRZA](https://github.com/Sobhan-SRZA) برای [Persian Caesar](https://github.com/Persian-Caesar) توسعه یافته و تحت مجوز MIT منتشر شده و به‌صورت فعال نگهداری می‌شود.
 
 ## ویژگی‌ها
-- **پخش چندپلتفرمی**: پشتیبانی از یوتیوب، ساندکلاد، اسپاتیفای و دیزر از طریق `ytdl-core`، `play-dl` و `soundcloud-downloader`.
-- **مدیریت صف**: افزودن آهنگ‌ها به صف، به‌هم‌ریختن یا بازگرداندن به ترتیب اولیه.
-- **گزینه‌های تکرار**: فعال یا غیرفعال کردن تکرار برای یک آهنگ یا کل صف.
+- **پشتیبانی اختیاری از Lavalink**: استفاده از Erela.js برای ویژگی‌های پیشرفته مانند بارگذاری لیست پخش و مدیریت بهتر صوت، یا بازگشت به پخش مستقیم بدون آن.
+- **جستجو و پخش چندپلتفرمی**: پشتیبانی از یوتیوب، ساندکلاد، اسپاتیفای و دیزر. جستجو به ترتیب اولویت پلتفرم‌ها (قابل تنظیم) انجام شده و لیستی از نتایج را برمی‌گرداند.
+- **مدیریت پخش مستقیم**: پخش مستقیم URLهای غیرپلتفرمی (مانند ایستگاه‌های رادیویی) بدون نیاز به جستجو.
+- **پشتیبانی از لیست پخش**: تشخیص، جستجو و بارگذاری لیست‌های پخش از تمام پلتفرم‌های پشتیبانی‌شده، افزودن خودکار آهنگ‌ها به صف.
+- **مدیریت صف**: افزودن آهنگ‌ها (تکی یا چندگانه)، به‌هم‌ریختن صف یا بازگشت به ترتیب اصلی.
+- **گزینه‌های حلقه**: فعال/غیرفعال کردن حلقه برای یک آهنگ یا کل صف.
 - **کنترل صدا**: تنظیم بلندی صدا (0–200٪).
-- **دریافت متن آهنگ**: دریافت متن آهنگ از نتایج جستجوی گوگل با استفاده از `html-to-text`.
-- **حالت رادیو**: پخش لیست URLهای به‌هم‌ریخته به‌صورت مداوم.
-- **سیستم رویداد**: رویدادهای نوع‌بندی‌شده برای وضعیت پخش، تغییرات صف، خطاها و غیره.
-- **قطع خودکار**: گزینه‌های قابل تنظیم برای خروج از کانال صوتی در صورت خالی بودن صف یا پس از زمان بی‌فعالی.
-- **امنیت نوع**: پشتیبانی کامل از تایپ‌اسکریپت با رابط‌ها و شمارنده‌های تعریف‌شده در `types.ts`.
-- **سبک‌وزن**: وابستگی‌های کم با عدم نیاز به چارچوب‌های خارجی به جز `discord.js`.
+- **دریافت متن آهنگ**: بازیابی متن آهنگ از نتایج جستجوی گوگل با استفاده از `html-to-text`.
+- **حالت رادیو**: پخش لیست URLهای به‌هم‌ریخته در یک حلقه پیوسته.
+- **سیستم رویدادها**: رویدادهای تایپ‌شده قوی برای وضعیت پخش، تغییرات صف، خطاها و غیره.
+- **قطع خودکار**: گزینه‌های قابل تنظیم برای خروج از کانال‌های صوتی در صورت خالی بودن صف یا پس از زمان بی‌فعالی.
+- **ایمنی تایپ**: پشتیبانی کامل از TypeScript با رابط‌ها و شمارش‌های تعریف‌شده در `types.ts`.
+- **سبک‌وزن**: وابستگی‌های حداقلی بدون نیاز به چارچوب خارجی به جز `discord.js`.
 
 ## نصب
-برای نصب بسته:
+بسته را نصب کنید:
 
 ```bash
 npm install @persian-caesar/discord-player
 ```
 
-اطمینان حاصل کنید که از Node.js نسخه 16 یا بالاتر استفاده می‌کنید، همان‌طور که در `package.json` مشخص شده است.
+مطمئن شوید که از Node.js نسخه 16 یا بالاتر استفاده می‌کنید، همان‌طور که در `package.json` مشخص شده است.
 
 ## وابستگی‌ها
 وابستگی‌های زیر برای عملکرد صحیح بسته مورد نیاز هستند:
 
-| بسته                    | نسخه      | هدف                                                                      |
-|------------------------|----------|-------------------------------------------------------------------------|
-| `@discordjs/voice`     | ^0.18.0  | مدیریت اتصال به کانال‌های صوتی و پخش صوت در دیسکورد.                    |
-| `@discordjs/opus`      | ^0.10.0  | ارائه کدگذاری/رمزگشایی صوتی Opus برای پخش با کیفیت بالا.                |
-| `ytdl-core`            | ^4.11.5  | پخش صوت از ویدیوهای یوتیوب با پشتیبانی از قابلیت اطمینان.               |
-| `ytdl-core-discord`    | ^1.3.1   | کتابخانه جایگزین برای پخش یوتیوب جهت سازگاری.                           |
-| `@distube/ytdl-core`   | ^4.16.10 | پخش پیشرفته یوتیوب با قابلیت‌ها و اطمینان بیشتر.                        |
-| `play-dl`              | ^1.9.7   | پخش صوت از اسپاتیفای، یوتیوب و دیزر با قابلیت جستجو.                    |
-| `soundcloud-downloader`| ^1.0.0   | دانلود و پخش صوت از URLهای ساندکلاد.                                    |
-| `html-to-text`         | ^9.0.5   | تبدیل HTML (از جستجوی متن آهنگ گوگل) به متن ساده.                       |
-| `libsodium-wrappers`   | ^0.7.15  | مورد نیاز برای رمزنگاری صوتی امن در `@discordjs/voice`.                 |
-| `ffmpeg-static`        | (همتا)   | ارائه FFmpeg برای پردازش و تبدیل جریان صوتی.                            |
+| بسته                    | نسخه    | هدف                                                                  |
+| ----------------------- | ------- | -------------------------------------------------------------------- |
+| `@discordjs/voice`      | ^0.18.0 | مدیریت اتصال به کانال‌های صوتی و پخش صوت در دیسکورد.                  |
+| `@discordjs/opus`       | ^0.10.0 | ارائه کدگذاری/رمزگشایی صوتی Opus برای پخش صوت با کیفیت بالا.         |
+| `erela.js`              | ^2.4.0  | اختیاری: دسترسی به Lavalink برای پشتیبانی پیشرفته از صوت و لیست پخش. |
+| `play-dl`               | ^1.9.7  | پخش صوت از اسپاتیفای، یوتیوب و دیزر با قابلیت جستجو (حالت بازگشتی).  |
+| `soundcloud-downloader` | ^1.0.0  | دانلود و پخش صوت از URLهای ساندکلاد (حالت بازگشتی).                  |
+| `html-to-text`          | ^9.0.5  | تبدیل HTML (از جستجوهای متن آهنگ گوگل) به متن ساده.                  |
+| `libsodium-wrappers`    | ^0.7.15 | مورد نیاز برای رمزگذاری امن صوت در `@discordjs/voice`.               |
+| `ffmpeg-static`         | (peer)  | ارائه FFmpeg برای پردازش صوت و تبدیل جریان.                          |
 
 **چرا این وابستگی‌ها؟**
-- `@discordjs/voice` و `@discordjs/opus` هسته اصلی عملکرد صوتی دیسکورد هستند و امکان اتصال به کانال‌ها و پخش صوت را فراهم می‌کنند.
-- کتابخانه‌های متعدد پخش یوتیوب (`ytdl-core`، `ytdl-core-discord`، `@distube/ytdl-core`) قابلیت اطمینان و پشتیبانی از عقب‌گرد را تضمین می‌کنند.
-- `play-dl` پشتیبانی از اسپاتیفای و دیزر را اضافه می‌کند و دامنه پلتفرم‌های پشتیبانی‌شده را گسترش می‌دهد.
-- `soundcloud-downloader` پخش از ساندکلاد، یک پلتفرم موسیقی محبوب، را امکان‌پذیر می‌کند.
+- `@discordjs/voice` و `@discordjs/opus` هسته اصلی عملکرد صوتی دیسکورد هستند و به بات امکان پیوستن به کانال‌ها و پخش صوت را می‌دهند.
+- `erela.js` ادغام اختیاری با Lavalink را برای مقیاس‌پذیری بهتر فراهم می‌کند.
+- `play-dl` و `soundcloud-downloader` پخش بازگشتی بدون Lavalink را ارائه می‌دهند.
 - `html-to-text` برای استخراج و تمیز کردن متن آهنگ از نتایج جستجوی گوگل استفاده می‌شود.
-- `libsodium-wrappers` و `ffmpeg-static` برای پردازش صوتی امن و کارآمد مورد نیاز هستند.
+- `libsodium-wrappers` و `ffmpeg-static` برای پردازش امن و کارآمد صوت مورد نیاز هستند.
 
 ## نمونه‌های استفاده
-در ادامه دو نمونه نشان داده شده است که نحوه یکپارچه‌سازی `@persian-caesar/discord-player` با `discord.js` را در تایپ‌اسکریپت و جاوااسکریپت نشان می‌دهد. این نمونه‌ها فرض می‌کنند که شما یک ربات دیسکورد با `discord.js` راه‌اندازی کرده‌اید.
+در زیر نمونه‌هایی برای نشان دادن نحوه ادغام `@persian-caesar/discord-player` با `discord.js` در TypeScript و JavaScript ارائه شده است. این نمونه‌ها فرض می‌کنند که شما یک بات دیسکورد با `discord.js` راه‌اندازی کرده‌اید.
 
-### نمونه تایپ‌اسکریپت
-این نمونه نشان می‌دهد چگونه یک ربات دیسکورد ایجاد کنید که از `MusicPlayer` برای پخش موسیقی در یک کانال صوتی و مدیریت دستورات استفاده می‌کند.
+### نمونه TypeScript با Lavalink
+این نمونه از Lavalink برای پشتیبانی از لیست پخش و عملکرد بهتر استفاده می‌کند.
 
 ```typescript
 import { Client, GatewayIntentBits, TextChannel, VoiceChannel } from 'discord.js';
-import { MusicPlayer, MusicPlayerEvent } from '@persian-caesar/discord-player';
+import { MusicPlayer, MusicPlayerEvent, LavalinkManager } from '@persian-caesar/discord-player';
 
-// مقداردهی اولیه کلاینت دیسکورد با دسترسی‌های مورد نیاز
+// راه‌اندازی کلاینت دیسکورد با intentهای مورد نیاز
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-// تنظیمات ربات
+// راه‌اندازی مدیر Erela.js برای Lavalink
+const manager = new LavalinkManager(client, {
+  nodes: [
+    {
+      host: "lava-v4.ajieblogs.eu.org",
+      port: 443,
+      password: "https://dsc.gg/ajidevserver",
+      secure: true
+    }
+  ]
+});
+
+// پیکربندی بات
 const PREFIX = '!';
-const TOKEN = 'YOUR_BOT_TOKEN'; // توکن ربات خود را جایگزین کنید
+const TOKEN = 'YOUR_BOT_TOKEN'; // توکن بات خود را جایگزین کنید
 
 client.on('ready', () => {
-  console.log(`وارد سیستم شد با نام ${client.user?.tag}`);
+  console.log(`وارد شده به عنوان ${client.user?.tag}`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -126,9 +144,9 @@ client.on('messageCreate', async (message) => {
   if (!message.guild || !message.member?.voice.channel) return;
 
   const voiceChannel = message.member.voice.channel as VoiceChannel;
-  const player = new MusicPlayer(voiceChannel, 50, {
+  const player = new MusicPlayer(voiceChannel, message.channel as TextChannel, manager, {
     autoLeaveOnEmptyQueue: true,
-    autoLeaveOnIdleMs: 300_000, // 5 دقیقه
+    autoLeaveOnIdleMs: 300_000 // 5 دقیقه
   });
 
   // شنونده‌های رویداد برای پخش‌کننده موسیقی
@@ -136,8 +154,9 @@ client.on('messageCreate', async (message) => {
     message.channel.send(`▶️ در حال پخش: ${metadata.title || metadata.url}`);
   });
 
-  player.on(MusicPlayerEvent.QueueAdd, ({ metadata, queue }) => {
-    message.channel.send(`➕ به صف اضافه شد: ${metadata.title || metadata.url} (${queue.length} در صف)`);
+  player.on(MusicPlayerEvent.QueueAdd, ({ metadata, metadatas, queue }) => {
+    const added = metadatas ? metadatas.length + ' آهنگ' : metadata?.title || metadata?.url;
+    message.channel.send(`➕ اضافه شد: ${added} (${queue.length} در صف)`);
   });
 
   player.on(MusicPlayerEvent.Error, (error) => {
@@ -145,72 +164,170 @@ client.on('messageCreate', async (message) => {
   });
 
   player.on(MusicPlayerEvent.Finish, () => {
-    message.channel.send('⏹️ پخش به پایان رسید.');
+    message.channel.send('⏹️ پخش پایان یافت.');
   });
 
   // مدیریت دستورات
   if (command === 'play') {
     const query = args.join(' ');
     if (!query) {
-      message.channel.send('لطفاً یک URL یا عبارت جستجو ارائه دهید.');
+      message.channel.send('لطفاً یک URL یا پرس‌وجو ارائه دهید.');
       return;
     }
     await player.play(query);
-  } else if (command === 'pause') {
-    player.pause();
-    message.channel.send('⏸️ پخش متوقف شد.');
-  } else if (command === 'resume') {
-    player.resume();
-    message.channel.send('▶️ پخش از سر گرفته شد.');
-  } else if (command === 'skip') {
-    player.skip();
-    message.channel.send('⏭️ به آهنگ بعدی پرش شد.');
-  } else if (command === 'stop') {
-    player.stop();
-    message.channel.send('⏹️ پخش متوقف شد.');
-  } else if (command === 'lyrics') {
-    const title = args.join(' ');
-    if (!title) {
-      message.channel.send('لطفاً عنوان آهنگ را ارائه دهید.');
-      return;
-    }
-    const lyrics = await player.searchLyrics(title);
-    message.channel.send(lyrics ? `🎵 متن آهنگ:\n${lyrics}` : '❌ متن آهنگ یافت نشد.');
-  }
+  } 
+  
+  else if (command === 'search') {
+    const query = args.join(' ');
+    const results = await player.search(query, 'youtube');
+    const resultList = results.map((r, i) => `${i + 1}. ${r.title || r.url}`).join('\n');
+    message.channel.send(resultList || 'نتیجه‌ای یافت نشد.');
+  } 
+  
+  else if (command === 'playlists') {
+    const query = args.join(' ');
+    const playlists = await player.searchPlaylists(query, 'spotify');
+    const list = playlists.map((p, i) => `${i + 1}. ${p.title} (${p.trackCount} آهنگ): ${p.url}`).join('\n');
+    message.channel.send(list || 'لیست پخشی یافت نشد.');
+  } 
+  
+  else if (command === 'isplaylist') {
+    const url = args[0];
+    const isPlaylist = await player.isPlaylist(url);
+    message.channel.send(isPlaylist ? 'بله، این یک لیست پخش است.' : 'خیر، این یک لیست پخش نیست.');
+  } // دستورات دیگر را به نیاز اضافه کنید
 });
 
 client.login(TOKEN);
 ```
 
-**مراحل اجرا:**
-1. کد بالا را به‌عنوان `bot.ts` ذخیره کنید.
-2. توکن ربات دیسکورد خود را جایگزین `YOUR_BOT_TOKEN` کنید.
-3. اطمینان حاصل کنید که تمام وابستگی‌ها نصب شده‌اند.
-4. با استفاده از `tsc bot.ts` کامپایل کنید و با `node bot.js` اجرا کنید.
+### نمونه TypeScript بدون Lavalink
+این نمونه از پخش مستقیم بدون Lavalink استفاده می‌کند.
 
-### نمونه جاوااسکریپت
-این نمونه مشابه است اما از جاوااسکریپت ساده با حاشیه‌نویسی‌های JSDoc برای راهنمایی‌های نوع استفاده می‌کند.
+```typescript
+import { Client, GatewayIntentBits, TextChannel, VoiceChannel } from 'discord.js';
+import { MusicPlayer, MusicPlayerEvent } from '@persian-caesar/discord-player';
 
-```javascript
-const { Client, GatewayIntentBits } = require('discord.js');
-const { MusicPlayer, MusicPlayerEvent } = require('@persian-caesar/discord-player');
-
-// مقداردهی اولیه کلاینت دیسکورد با دسترسی‌های مورد نیاز
+// راه‌اندازی کلاینت دیسکورد با intentهای مورد نیاز
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-// تنظیمات ربات
+// پیکربندی بات
 const PREFIX = '!';
-const TOKEN = 'YOUR_BOT_TOKEN'; // توکن ربات خود را جایگزین کنید
+const TOKEN = 'YOUR_BOT_TOKEN'; // توکن بات خود را جایگزین کنید
 
 client.on('ready', () => {
-  console.log(`وارد سیستم شد با نام ${client.user?.tag}`);
+  console.log(`وارد شده به عنوان ${client.user?.tag}`);
+});
+
+client.on('messageCreate', async (message) => {
+  if (!message.content.startsWith(PREFIX) || message.author.bot) return;
+
+  const args = message.content.slice(PREFIX.length).trim().split(/ +/);
+  const command = args.shift()?.toLowerCase();
+
+  if (!message.guild || !message.member?.voice.channel) return;
+
+  const voiceChannel = message.member.voice.channel as VoiceChannel;
+  const player = new MusicPlayer(voiceChannel, message.channel as TextChannel, undefined, {
+    autoLeaveOnEmptyQueue: true,
+    autoLeaveOnIdleMs: 300_000, // 5 دقیقه
+    youtubeCookie: 'YOUR_YOUTUBE_COOKIE', // اختیاری برای محتوای محدود شده با سن
+  });
+
+  // شنونده‌های رویداد برای پخش‌کننده موسیقی
+  player.on(MusicPlayerEvent.Start, ({ metadata }) => {
+    message.channel.send(`▶️ در حال پخش: ${metadata.title || metadata.url}`);
+  });
+
+  player.on(MusicPlayerEvent.QueueAdd, ({ metadata, metadatas, queue }) => {
+    const added = metadatas ? metadatas.length + ' آهنگ' : metadata?.title || metadata?.url;
+    message.channel.send(`➕ اضافه شد: ${added} (${queue.length} در صف)`);
+  });
+
+  player.on(MusicPlayerEvent.Error, (error) => {
+    message.channel.send(`❌ خطا: ${error.message}`);
+  });
+
+  player.on(MusicPlayerEvent.Finish, () => {
+    message.channel.send('⏹️ پخش پایان یافت.');
+  });
+
+  // مدیریت دستورات
+  if (command === 'play') {
+    const query = args.join(' ');
+    if (!query) {
+      message.channel.send('لطفاً یک URL یا پرس‌وجو ارائه دهید.');
+      return;
+    }
+    await player.play(query);
+  } 
+  
+  else if (command === 'search') {
+    const query = args.join(' ');
+    const results = await player.search(query, 'spotify'); // پلتفرم اختیاری
+    const resultList = results.map((r, i) => `${i + 1}. ${r.title || r.url}`).join('\n');
+    message.channel.send(resultList || 'نتیجه‌ای یافت نشد.');
+  } 
+  
+  else if (command === 'playlists') {
+    const query = args.join(' ');
+    const playlists = await player.searchPlaylists(query, 'deezer');
+    const list = playlists.map((p, i) => `${i + 1}. ${p.title} (${p.trackCount} آهنگ): ${p.url}`).join('\n');
+    message.channel.send(list || 'لیست پخشی یافت نشد.');
+  } 
+  
+  else if (command === 'isplaylist') {
+    const url = args[0];
+    const isPlaylist = await player.isPlaylist(url);
+    message.channel.send(isPlaylist ? 'بله، این یک لیست پخش است.' : 'خیر، این یک لیست پخش نیست.');
+  } // دستورات دیگر را به نیاز اضافه کنید
+});
+
+client.login(TOKEN);
+```
+
+### نمونه JavaScript
+این نمونه از JavaScript خالص با Lavalink اختیاری استفاده می‌کند.
+
+```javascript
+const { Client, GatewayIntentBits } = require('discord.js');
+const { MusicPlayer, MusicPlayerEvent, LavalinkManager } = require('@persian-caesar/discord-player');
+
+// راه‌اندازی کلاینت دیسکورد با intentهای مورد نیاز
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
+});
+
+// مدیر Lavalink اختیاری
+const manager = new LavalinkManager(client, {
+  nodes: [
+    {
+      host: "lava-v4.ajieblogs.eu.org",
+      port: 443,
+      password: "https://dsc.gg/ajidevserver",
+      secure: true
+    }
+  ]
+});
+
+// پیکربندی بات
+const PREFIX = '!';
+const TOKEN = 'YOUR_BOT_TOKEN'; // توکن بات خود را جایگزین کنید
+
+client.on('ready', () => {
+  console.log(`وارد شده به عنوان ${client.user?.tag}`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -223,9 +340,9 @@ client.on('messageCreate', async (message) => {
 
   /** @type {import('@persian-caesar/discord-player').VoiceChannel} */
   const voiceChannel = message.member.voice.channel;
-  const player = new MusicPlayer(voiceChannel, 50, {
+  const player = new MusicPlayer(voiceChannel, message.channel, manager, { // اگر از Lavalink استفاده می‌کنید، manager را ارسال کنید
     autoLeaveOnEmptyQueue: true,
-    autoLeaveOnIdleMs: 300_000, // 5 دقیقه
+    autoLeaveOnIdleMs: 300_000 // 5 دقیقه
   });
 
   // شنونده‌های رویداد برای پخش‌کننده موسیقی
@@ -233,8 +350,9 @@ client.on('messageCreate', async (message) => {
     message.channel.send(`▶️ در حال پخش: ${metadata.title || metadata.url}`);
   });
 
-  player.on(MusicPlayerEvent.QueueAdd, ({ metadata, queue }) => {
-    message.channel.send(`➕ به صف اضافه شد: ${metadata.title || metadata.url} (${queue.length} در صف)`);
+  player.on(MusicPlayerEvent.QueueAdd, ({ metadata, metadatas, queue }) => {
+    const added = metadatas ? metadatas.length + ' آهنگ' : metadata?.title || metadata?.url;
+    message.channel.send(`➕ اضافه شد: ${added} (${queue.length} در صف)`);
   });
 
   player.on(MusicPlayerEvent.Error, (error) => {
@@ -242,48 +360,42 @@ client.on('messageCreate', async (message) => {
   });
 
   player.on(MusicPlayerEvent.Finish, () => {
-    message.channel.send('⏹️ پخش به پایان رسید.');
+    message.channel.send('⏹️ پخش پایان یافت.');
   });
 
   // مدیریت دستورات
   if (command === 'play') {
     const query = args.join(' ');
     if (!query) {
-      message.channel.send('لطفاً یک URL یا عبارت جستجو ارائه دهید.');
+      message.channel.send('لطفاً یک URL یا پرس‌وجو ارائه دهید.');
       return;
     }
     await player.play(query);
-  } else if (command === 'pause') {
-    player.pause();
-    message.channel.send('⏸️ پخش متوقف شد.');
-  } else if (command === 'resume') {
-    player.resume();
-    message.channel.send('▶️ پخش از سر گرفته شد.');
-  } else if (command === 'skip') {
-    player.skip();
-    message.channel.send('⏭️ به آهنگ بعدی پرش شد.');
-  } else if (command === 'stop') {
-    player.stop();
-    message.channel.send('⏹️ پخش متوقف شد.');
-  } else if (command === 'lyrics') {
-    const title = args.join(' ');
-    if (!title) {
-      message.channel.send('لطفاً عنوان آهنگ را ارائه دهید.');
-      return;
-    }
-    const lyrics = await player.searchLyrics(title);
-    message.channel.send(lyrics ? `🎵 متن آهنگ:\n${lyrics}` : '❌ متن آهنگ یافت نشد.');
-  }
+  } 
+  
+  else if (command === 'search') {
+    const query = args.join(' ');
+    const results = await player.search(query);
+    const resultList = results.map((r, i) => `${i + 1}. ${r.title || r.url}`).join('\n');
+    message.channel.send(resultList || 'نتیجه‌ای یافت نشد.');
+  } 
+  
+  else if (command === 'playlists') {
+    const query = args.join(' ');
+    const playlists = await player.searchPlaylists(query);
+    const list = playlists.map((p, i) => `${i + 1}. ${p.title} (${p.trackCount} آهنگ): ${p.url}`).join('\n');
+    message.channel.send(list || 'لیست پخشی یافت نشد.');
+  } 
+  
+  else if (command === 'isplaylist') {
+    const url = args[0];
+    const isPlaylist = await player.isPlaylist(url);
+    message.channel.send(isPlaylist ? 'بله، این یک لیست پخش است.' : 'خیر، این یک لیست پخش نیست.');
+  } // دستورات دیگر را به نیاز اضافه کنید
 });
 
 client.login(TOKEN);
 ```
-
-**مراحل اجرا:**
-1. کد بالا را به‌عنوان `bot.js` ذخیره کنید.
-2. توکن ربات دیسکورد خود را جایگزین `YOUR_BOT_TOKEN` کنید.
-3. اطمینان حاصل کنید که تمام وابستگی‌ها نصب شده‌اند.
-4. با استفاده از `node bot.js` اجرا کنید.
 
 ## مرجع API
 
@@ -292,35 +404,41 @@ client.login(TOKEN);
 ```typescript
 new MusicPlayer(
   channel: VoiceChannel,
-  initialVolume?: number, // پیش‌فرض: 100
-  options?: MusicPlayerOptions // { autoLeaveOnEmptyQueue?: boolean, autoLeaveOnIdleMs?: number }
+  textChannel: TextChannel,
+  lavaLinkManager?: Manager, // مدیر Erela.js اختیاری برای Lavalink
+  options?: MusicPlayerOptions // { initialVolume?: number, autoLeaveOnEmptyQueue?: boolean, autoLeaveOnIdleMs?: number, youtubeCookie?: string, logError?: boolean }
 )
 ```
 
 **متدها**:
-| متد                                            | توضیحات                                                   |
-| ---------------------------------------------- | --------------------------------------------------------- |
-| `play(input: string)`                          | پخش یک آهنگ با URL یا عبارت جستجو، در صورت پخش، به صف اضافه می‌کند. |
-| `pause()`                                      | توقف آهنگ در حال پخش.                                    |
-| `resume()`                                     | از سرگیری پخش.                                           |
-| `setVolume(percent: number)`                   | تنظیم بلندی صدا (0–200٪).                                |
-| `skip()`                                       | پرش به آهنگ بعدی در صف.                                  |
-| `previous()`                                   | پخش آهنگ قبلی از تاریخچه.                                |
-| `shuffle()`                                    | به‌هم‌ریختن صف و ذخیره ترتیب اولیه.                     |
-| `undoShuffle()`                                | بازگرداندن صف به ترتیب اولیه، به جز آهنگ‌های پخش‌شده.   |
-| `toggleLoopQueue()`                            | فعال/غیرفعال کردن تکرار صف.                              |
-| `toggleLoopTrack()`                            | فعال/غیرفعال کردن تکرار تک‌آهنگ.                        |
-| `startRadio(urls: string[])`                   | شروع حالت رادیو با URLهای به‌هم‌ریخته.                  |
-| `stop(noLeave?: boolean)`                      | توقف پخش، با امکان انتخاب برای قطع اتصال.                |
-| `disconnect()`                                 | قطع اتصال از کانال صوتی.                                 |
-| `getQueue(): TrackMetadata[]`                  | بازگرداندن کپی از صف فعلی.                              |
-| `getVolume(): number`                          | بازگرداندن بلندی صدا فعلی (0–200٪).                     |
-| `isPlaying(): boolean`                         | بررسی اینکه آیا آهنگی در حال پخش است.                    |
-| `isPaused(): boolean`                          | بررسی اینکه آیا پخش متوقف شده است.                      |
-| `isShuffiled(): boolean`                       | بررسی اینکه آیا صف به‌هم‌ریخته است.                     |
-| `searchLyrics(title: string, artist?: string)` | دریافت متن آهنگ از گوگل.                                 |
+| متد                                                                                                      | توضیحات                                                |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `isPlaylist(url: string): Promise<boolean>`                                                              | بررسی می‌کند که آیا URL داده‌شده یک لیست پخش است.        |
+| `searchPlaylists(query: string, platform?: SearchPlatform, limit?: number): Promise<PlaylistMetadata[]>` | جستجوی لیست‌های پخش در پلتفرم‌ها.                        |
+| `search(query: string, platform?: SearchPlatform, limit?: number): Promise<TrackMetadata[]>`             | جستجوی آهنگ‌ها در پلتفرم‌ها.                             |
+| `play(input: string                                                                                      | TrackMetadata                                          | TrackMetadata[], radio?: boolean): Promise<void>` | پخش ورودی (رشته جستجو می‌کند و اولین نتیجه یا لیست پخش را بارگذاری می‌کند، متادیتا/آرایه مستقیم پخش می‌شود). پشتیبانی از لیست پخش. |
+| `pause(): void`                                                                                          | مکث آهنگ فعلی.                                         |
+| `resume(): void`                                                                                         | ادامه پخش.                                             |
+| `setVolume(percent: number): number`                                                                     | تنظیم صدا (0–200٪)، مقدار جدید را برمی‌گرداند.          |
+| `skip(): void`                                                                                           | پرش به آهنگ بعدی در صف.                                |
+| `previous(): Promise<void>`                                                                              | پخش آهنگ قبلی از تاریخچه.                              |
+| `shuffle(): void`                                                                                        | به‌هم‌ریختن صف، ذخیره ترتیب اصلی.                        |
+| `undoShuffle(): void`                                                                                    | بازگرداندن صف به ترتیب پیش از به‌هم‌ریختن.               |
+| `toggleLoopQueue(): boolean`                                                                             | فعال/غیرفعال کردن حلقه صف، وضعیت جدید را برمی‌گرداند.   |
+| `toggleLoopTrack(): boolean`                                                                             | فعال/غیرفعال کردن حلقه آهنگ، وضعیت جدید را برمی‌گرداند. |
+| `startRadio(urls: string[]): Promise<void>`                                                              | شروع حالت رادیو با URLهای به‌هم‌ریخته.                   |
+| `stop(noLeave?: boolean): void`                                                                          | توقف پخش، به‌صورت اختیاری قطع اتصال می‌کند.              |
+| `disconnect(): void`                                                                                     | قطع اتصال از کانال صوتی.                               |
+| `join(): VoiceConnection`                                                                                | پیوستن به کانال صوتی بدون اشتراک پخش‌کننده.             |
+| `getQueue(): TrackMetadata[]`                                                                            | کپی صف فعلی را برمی‌گرداند.                             |
+| `getVolume(): number`                                                                                    | بلندی صدای فعلی (0–200٪) را برمی‌گرداند.                |
+| `isPlaying(): boolean`                                                                                   | بررسی می‌کند که آیا آهنگی در حال پخش است.               |
+| `isPaused(): boolean`                                                                                    | بررسی می‌کند که آیا پخش مکث شده است.                    |
+| `isShuffiled(): boolean`                                                                                 | بررسی می‌کند که آیا صف به‌هم‌ریخته است.                   |
+| `isConnected(guildId?: string): boolean`                                                                 | بررسی می‌کند که آیا به کانال صوتی متصل است.             |
+| `searchLyrics(title: string, artist?: string): Promise<string                                            | null>`                                                 | بازیابی متن آهنگ از گوگل.                         |
 
-### شمارنده MusicPlayerEvent
+### شمارش MusicPlayerEvent
 ```typescript
 export enum MusicPlayerEvent {
   Start = "start",
@@ -340,89 +458,130 @@ export enum MusicPlayerEvent {
 }
 ```
 
-**بارهای رویداد**:
+**محتوای رویدادها**:
 - `Start`: `{ metadata: TrackMetadata, queue: TrackMetadata[] }`
-- `QueueAdd`: `{ metadata: TrackMetadata, queue: TrackMetadata[] }`
+- `QueueAdd`: `{ metadata?: TrackMetadata, metadatas?: TrackMetadata[], queue: TrackMetadata[] }`
 - `VolumeChange`: `{ volume: number }`
 - `Skip`: `{ queue: TrackMetadata[], history: string[] }`
 - `Previous`: `{ metadata: TrackMetadata, queue: TrackMetadata[], history: string[] }`
 - `Shuffle`: `{ queue: TrackMetadata[] }`
+- `LoopQueue`: `{ enabled: boolean }`
+- `LoopTrack`: `{ enabled: boolean }`
 - `Finish`: `{ queue: TrackMetadata[], history: string[] }`
 - `Error`: `Error`
-- سایرین: بدون بار
+- سایرین: بدون محتوا
 
-برای تعریف‌های کامل نوع، به `types.ts` مراجعه کنید.
+برای تعاریف کامل تایپ، به `types.ts` مراجعه کنید.
 
 ### استفاده و نمونه‌های متدها
-این بخش توضیحات مفصل و نمونه‌های کد برای هر متد `MusicPlayer` ارائه می‌دهد و نحوه استفاده از آنها را در زمینه یک ربات دیسکورد با استفاده از `discord.js` نشان می‌دهد. نمونه‌ها فرض می‌کنند که یک نمونه `MusicPlayer` همان‌طور که در بخش [نمونه‌های استفاده](#نمونه‌های-استفاده) نشان داده شده، ایجاد شده است.
+این بخش توضیحات مفصل و نمونه‌های کد برای هر متد `MusicPlayer` ارائه می‌دهد و استفاده از آن‌ها را در زمینه بات دیسکورد با استفاده از `discord.js` نشان می‌دهد. نمونه‌ها فرض می‌کنند که یک نمونه `MusicPlayer` همان‌طور که در بخش [نمونه‌های استفاده](#نمونه‌های-استفاده) نشان داده شده، ایجاد شده است.
 
-#### `play(input: string): Promise<void>`
-پخش یک آهنگ با URL یا عبارت جستجو. اگر آهنگی در حال پخش باشد، آهنگ جدید به صف اضافه می‌شود.
+#### `isPlaylist(url: string): Promise<boolean>`
+بررسی می‌کند که آیا URL داده‌شده یک لیست پخش است.
 
 **نمونه**:
 ```typescript
-// دستور: !play <query>
+if (command === 'isplaylist') {
+  const url = args[0];
+  const isPlaylist = await player.isPlaylist(url);
+  message.channel.send(isPlaylist ? 'بله، این یک لیست پخش است.' : 'خیر، این یک لیست پخش نیست.');
+}
+```
+
+#### `searchPlaylists(query: string, platform?: SearchPlatform, limit?: number): Promise<PlaylistMetadata[]>`
+جستجوی لیست‌های پخش در پلتفرم‌ها.
+
+**نمونه**:
+```typescript
+if (command === 'playlists') {
+  const query = args.join(' ');
+  const playlists = await player.searchPlaylists(query, 'spotify', 5);
+  if (playlists.length === 0) {
+    message.channel.send('لیست پخشی یافت نشد.');
+    return;
+  }
+  const list = playlists.map((p, i) => `${i + 1}. ${p.title} (${p.trackCount} آهنگ): ${p.url}`).join('\n');
+  message.channel.send(`لیست‌های پخش:\n${list}`);
+}
+```
+
+#### `search(query: string, platform?: SearchPlatform, limit?: number): Promise<TrackMetadata[]>`
+جستجوی آهنگ‌ها در پلتفرم‌ها.
+
+**نمونه**:
+```typescript
+if (command === 'search') {
+  const query = args.join(' ');
+  const results = await player.search(query, 'youtube', 5);
+  if (results.length === 0) {
+    message.channel.send('نتیجه‌ای یافت نشد.');
+    return;
+  }
+  const resultList = results.map((r, i) => `${i + 1}. ${r.title || r.url} (${r.source})`).join('\n');
+  message.channel.send(`نتایج:\n${resultList}`);
+}
+```
+
+#### `play(input: string | TrackMetadata | TrackMetadata[], radio?: boolean): Promise<void>`
+پخش ورودی. اگر رشته باشد، اولین نتیجه را جستجو و پخش می‌کند یا لیست پخش را بارگذاری می‌کند. اگر متادیتا یا آرایه باشد، مستقیم پخش می‌شود.
+
+**نمونه**:
+```typescript
 if (command === 'play') {
   const query = args.join(' ');
   if (!query) {
-    message.channel.send('لطفاً یک URL یا عبارت جستجو ارائه دهید.');
+    message.channel.send('لطفاً یک URL یا پرس‌وجو ارائه دهید.');
     return;
   }
   await player.play(query);
-  // رویدادهای Start یا QueueAdd پاسخ را مدیریت می‌کنند
 }
 player.on(MusicPlayerEvent.Start, ({ metadata }) => {
   message.channel.send(`▶️ در حال پخش: ${metadata.title || metadata.url}`);
 });
-player.on(MusicPlayerEvent.QueueAdd, ({ metadata, queue }) => {
-  message.channel.send(`➕ به صف اضافه شد: ${metadata.title || metadata.url} (${queue.length} در صف)`);
+player.on(MusicPlayerEvent.QueueAdd, ({ metadata, metadatas, queue }) => {
+  const added = metadatas ? metadatas.length + ' آهنگ' : metadata?.title || metadata?.url;
+  message.channel.send(`➕ اضافه شد: ${added} (${queue.length} در صف)`);
 });
 ```
 
 #### `pause(): void`
-توقف آهنگ در حال پخش.
+مکث آهنگ فعلی.
 
 **نمونه**:
 ```typescript
 if (command === 'pause') {
   player.pause();
-  message.channel.send('⏸️ پخش متوقف شد.');
+  message.channel.send('⏸️ پخش مکث شد.');
 }
-player.on(MusicPlayerEvent.Pause, () => {
-  message.channel.send('⏸️ پخش متوقف شد.');
-});
 ```
 
 #### `resume(): void`
-از سرگیری پخش آهنگ متوقف‌شده.
+ادامه پخش.
 
 **نمونه**:
 ```typescript
 if (command === 'resume') {
   player.resume();
-  message.channel.send('▶️ پخش از سر گرفته شد.');
+  message.channel.send('▶️ پخش ادامه یافت.');
 }
-player.on(MusicPlayerEvent.Resume, () => {
-  message.channel.send('▶️ پخش از سر گرفته شد.');
-});
 ```
 
-#### `setVolume(percent: number): void`
-تنظیم بلندی صدا (0–200٪). مقادیر خارج از این محدوده به 200٪ محدود می‌شوند.
+#### `setVolume(percent: number): number`
+تنظیم صدا (0–200٪)، مقدار جدید را برمی‌گرداند.
 
 **نمونه**:
 ```typescript
 if (command === 'volume') {
   const volume = parseInt(args[0]);
   if (isNaN(volume)) {
-    message.channel.send('لطفاً یک مقدار معتبر برای صدا (0–200) ارائه دهید.');
+    message.channel.send('لطفاً یک مقدار صدای معتبر (0–200) ارائه دهید.');
     return;
   }
-  player.setVolume(volume);
-  // رویداد VolumeChange پاسخ را مدیریت می‌کند
+  const newVolume = player.setVolume(volume);
+  message.channel.send(`🔊 صدا تنظیم شد به ${newVolume}%`);
 }
 player.on(MusicPlayerEvent.VolumeChange, ({ volume }) => {
-  message.channel.send(`🔊 صدا تنظیم شد به ${volume}%`);
+  message.channel.send(`🔊 صدا تغییر کرد به ${volume}%`);
 });
 ```
 
@@ -436,31 +595,25 @@ if (command === 'skip') {
   message.channel.send('⏭️ به آهنگ بعدی پرش شد.');
 }
 player.on(MusicPlayerEvent.Skip, ({ queue }) => {
-  message.channel.send(`⏭️ پرش انجام شد. ${queue.length} آهنگ در صف باقی مانده.`);
+  message.channel.send(`⏭️ پرش شد. ${queue.length} آهنگ باقی مانده.`);
 });
 ```
 
 #### `previous(): Promise<void>`
-پخش آهنگ قبلی از تاریخچه، در صورت وجود.
+پخش آهنگ قبلی از تاریخچه.
 
 **نمونه**:
 ```typescript
 if (command === 'previous') {
   await player.previous();
-  // رویداد Previous پاسخ را مدیریت می‌کند
 }
 player.on(MusicPlayerEvent.Previous, ({ metadata }) => {
-  message.channel.send(`⏮️ پخش آهنگ قبلی: ${metadata.title || metadata.url}`);
-});
-player.on(MusicPlayerEvent.Error, (error) => {
-  if (error.message.includes('No track to previous')) {
-    message.channel.send('❌ آهنگ قبلی در دسترس نیست.');
-  }
+  message.channel.send(`⏮️ پخش قبلی: ${metadata.title || metadata.url}`);
 });
 ```
 
 #### `shuffle(): void`
-به‌هم‌ریختن صف و ذخیره ترتیب اولیه برای بازگرداندن احتمالی.
+به‌هم‌ریختن صف.
 
 **نمونه**:
 ```typescript
@@ -469,220 +622,225 @@ if (command === 'shuffle') {
   message.channel.send('🔀 صف به‌هم‌ریخته شد.');
 }
 player.on(MusicPlayerEvent.Shuffle, ({ queue }) => {
-  message.channel.send(`🔀 صف به‌هم‌ریخته شد. ${queue.length} آهنگ در ترتیب جدید.`);
+  message.channel.send(`🔀 به‌هم‌ریخته شد. ${queue.length} آهنگ در ترتیب جدید.`);
 });
 ```
 
 #### `undoShuffle(): void`
-بازگرداندن صف به ترتیب اولیه، به جز آهنگ‌های پخش‌شده.
+بازگرداندن صف به ترتیب پیش از به‌هم‌ریختن.
 
 **نمونه**:
 ```typescript
 if (command === 'unshuffle') {
   player.undoShuffle();
-  message.channel.send('🔄 صف به ترتیب اولیه بازگردانده شد.');
+  message.channel.send('🔄 صف بازگردانی شد.');
 }
-player.on(MusicPlayerEvent.Shuffle, ({ queue }) => {
-  message.channel.send(`🔄 صف بازگردانده شد. ${queue.length} آهنگ در صف.`);
-});
 ```
 
-#### `toggleLoopQueue(): void`
-فعال/غیرفعال کردن تکرار صف.
+#### `toggleLoopQueue(): boolean`
+فعال/غیرفعال کردن حلقه صف، وضعیت جدید را برمی‌گرداند.
 
 **نمونه**:
 ```typescript
 if (command === 'loopqueue') {
-  player.toggleLoopQueue();
-  message.channel.send(`🔁 تکرار صف ${player.isLoopQueue() ? 'فعال' : 'غیرفعال'} شد.`);
+  const enabled = player.toggleLoopQueue();
+  message.channel.send(`🔁 حلقه صف ${enabled ? 'فعال' : 'غیرفعال'} شد.`);
 }
+player.on(MusicPlayerEvent.LoopQueue, ({ enabled }) => {
+  message.channel.send(`🔁 حلقه صف ${enabled ? 'فعال' : 'غیرفعال'} شد.`);
+});
 ```
 
-#### `toggleLoopTrack(): void`
-فعال/غیرفعال کردن تکرار تک‌آهنگ.
+#### `toggleLoopTrack(): boolean`
+فعال/غیرفعال کردن حلقه آهنگ، وضعیت جدید را برمی‌گرداند.
 
 **نمونه**:
 ```typescript
 if (command === 'looptrack') {
-  player.toggleLoopTrack();
-  message.channel.send(`🔂 تکرار آهنگ ${player.isLoopTrack() ? 'فعال' : 'غیرفعال'} شد.`);
+  const enabled = player.toggleLoopTrack();
+  message.channel.send(`🔂 حلقه آهنگ ${enabled ? 'فعال' : 'غیرفعال'} شد.`);
 }
+player.on(MusicPlayerEvent.LoopTrack, ({ enabled }) => {
+  message.channel.send(`🔂 حلقه آهنگ ${enabled ? 'فعال' : 'غیرفعال'} شد.`);
+});
 ```
 
 #### `startRadio(urls: string[]): Promise<void>`
-شروع حالت رادیو با به‌هم‌ریختن لیست URLها و پخش مداوم آنها.
+شروع حالت رادیو.
 
 **نمونه**:
 ```typescript
 if (command === 'radio') {
   const urls = args; // آرایه URLها
-  if (!urls.length) {
-    message.channel.send('لطفاً حداقل یک URL ارائه دهید.');
-    return;
-  }
   await player.startRadio(urls);
-  // رویداد Start پاسخ را مدیریت می‌کند
+  message.channel.send('📻 حالت رادیو شروع شد.');
 }
-player.on(MusicPlayerEvent.Start, ({ metadata }) => {
-  message.channel.send(`📻 حالت رادیو شروع شد: ${metadata.title || metadata.url}`);
-});
 ```
 
 #### `stop(noLeave?: boolean): void`
-توقف پخش، پاک کردن صف و تاریخچه، و به‌صورت اختیاری قطع اتصال از کانال صوتی.
+توقف پخش.
 
 **نمونه**:
 ```typescript
 if (command === 'stop') {
-  player.stop(true); // در کانال صوتی باقی بمانید
-  message.channel.send('⏹️ پخش متوقف شد.');
+  player.stop(true); // متصل باقی بماند
+  message.channel.send('⏹️ متوقف شد.');
 }
 player.on(MusicPlayerEvent.Stop, () => {
-  message.channel.send('⏹️ پخش متوقف شد.');
+  message.channel.send('⏹️ متوقف شد.');
 });
 ```
 
 #### `disconnect(): void`
-قطع اتصال ربات از کانال صوتی و پاک کردن تمام منابع.
+قطع اتصال از کانال صوتی.
 
 **نمونه**:
 ```typescript
-if (command === 'disconnect') {
+if (command === 'leave') {
   player.disconnect();
-  message.channel.send('🔌 از کانال صوتی قطع شد.');
+  message.channel.send('🔌 قطع اتصال شد.');
 }
 player.on(MusicPlayerEvent.Disconnect, () => {
-  message.channel.send('🔌 از کانال صوتی قطع شد.');
+  message.channel.send('🔌 قطع اتصال شد.');
 });
 ```
 
+#### `join(): VoiceConnection`
+پیوستن به کانال صوتی بدون اشتراک پخش‌کننده.
+
+**نمونه**:
+```typescript
+if (command === 'join') {
+  const connection = player.join();
+  message.channel.send('🔗 به کانال صوتی پیوسته شد.');
+}
+```
+
 #### `getQueue(): TrackMetadata[]`
-بازگرداندن کپی از صف فعلی به‌صورت آرایه‌ای از `TrackMetadata`.
+کپی صف فعلی را برمی‌گرداند.
 
 **نمونه**:
 ```typescript
 if (command === 'queue') {
   const queue = player.getQueue();
-  if (!queue.length) {
-    message.channel.send('📃 صف خالی است.');
-    return;
-  }
-  const queueList = queue.map((track, index) => `${index + 1}. ${track.title || track.url}`).join('\n');
-  message.channel.send(`📃 صف:\n${queueList}`);
+  const list = queue.map((t, i) => `${i + 1}. ${t.title || t.url}`).join('\n');
+  message.channel.send(`📃 صف:\n${list || 'خالی'}`);
 }
 ```
 
 #### `getVolume(): number`
-بازگرداندن بلندی صدا فعلی به‌صورت درصد (0–200٪).
+بلندی صدای فعلی را برمی‌گرداند.
 
 **نمونه**:
 ```typescript
 if (command === 'volume') {
-  const currentVolume = player.getVolume();
-  message.channel.send(`🔊 بلندی صدا فعلی: ${currentVolume}%`);
+  message.channel.send(`🔊 صدا: ${player.getVolume()}%`);
 }
 ```
 
 #### `isPlaying(): boolean`
-بررسی اینکه آیا آهنگی در حال پخش است.
+بررسی می‌کند که آیا آهنگی در حال پخش است.
 
 **نمونه**:
 ```typescript
 if (command === 'status') {
-  const status = player.isPlaying() ? 'در حال پخش' : 'در حال پخش نیست';
-  message.channel.send(`🎵 وضعیت پخش‌کننده: ${status}`);
+  message.channel.send(`🎵 ${player.isPlaying() ? 'در حال پخش' : 'در حال پخش نیست'}.`);
 }
 ```
 
 #### `isPaused(): boolean`
-بررسی اینکه آیا پخش متوقف شده است.
+بررسی می‌کند که آیا پخش مکث شده است.
 
 **نمونه**:
 ```typescript
 if (command === 'status') {
-  const paused = player.isPaused() ? 'متوقف' : 'متوقف نیست';
-  message.channel.send(`⏯️ وضعیت پخش: ${paused}`);
+  message.channel.send(`⏯️ ${player.isPaused() ? 'مکث شده' : 'مکث نشده'}.`);
 }
 ```
 
 #### `isShuffiled(): boolean`
-بررسی اینکه آیا صف به‌هم‌ریخته است.
+بررسی می‌کند که آیا صف به‌هم‌ریخته است.
 
 **نمونه**:
 ```typescript
 if (command === 'status') {
-  const shuffled = player.isShuffiled() ? 'به‌هم‌ریخته' : 'به‌هم‌ریخته نیست';
-  message.channel.send(`🔀 وضعیت صف: ${shuffled}`);
+  message.channel.send(`🔀 صف ${player.isShuffiled() ? 'به‌هم‌ریخته' : 'به‌هم‌ریخته نیست'}.`);
+}
+```
+
+#### `isConnected(guildId?: string): boolean`
+بررسی می‌کند که آیا به کانال صوتی متصل است.
+
+**نمونه**:
+```typescript
+if (command === 'status') {
+  message.channel.send(`🔗 ${player.isConnected() ? 'متصل' : 'متصل نیست'}.`);
 }
 ```
 
 #### `searchLyrics(title: string, artist?: string): Promise<string | null>`
-دریافت متن آهنگ از گوگل بر اساس عنوان ارائه‌شده و خواننده اختیاری.
+بازیابی متن آهنگ.
 
 **نمونه**:
 ```typescript
 if (command === 'lyrics') {
   const title = args.join(' ');
-  if (!title) {
-    message.channel.send('لطفاً عنوان آهنگ را ارائه دهید.');
-    return;
-  }
-  const lyrics = await player.searchLyrics(title);
-  message.channel.send(lyrics ? `🎵 متن آهنگ:\n${lyrics}` : '❌ متن آهنگ یافت نشد.');
+  const lyrics = await player.searchLyrics(title, 'artist');
+  message.channel.send(lyrics ? `🎵 متن آهنگ:\n${lyrics}` : 'متن آهنگی یافت نشد.');
 }
 ```
 
 ## پشتیبانی و مشارکت
 - **مخزن**: [https://github.com/Persian-Caesar/discord-player](https://github.com/Persian-Caesar/discord-player)
-- **گزارش مشکلات**: [https://github.com/Persian-Caesar/discord-player/issues](https://github.com/Persian-Caesar/discord-player/issues)
+- **مسائل**: [https://github.com/Persian-Caesar/discord-player/issues](https://github.com/Persian-Caesar/discord-player/issues)
 - **جامعه**: برای پشتیبانی به [دیسکورد Persian Caesar](https://dsc.gg/persian-caesar) بپیوندید.
-- **مشارکت**: درخواست‌های کشش (Pull Requests) خوش‌آمد هستند! لطفاً دستورالعمل‌های مشارکت در مخزن را دنبال کنید.
+- **مشارکت**: درخواست‌های Pull استقبال می‌شوند! لطفاً دستورالعمل‌های مشارکت در مخزن را دنبال کنید.
 
 ## مجوز
-این پروژه تحت مجوز MIT منتشر شده است. برای جزئیات، فایل `[LICENSE](./LICENSE)` یا مخزن را ببینید.
+این پروژه تحت مجوز MIT منتشر شده است. برای جزئیات، فایل [`LICENSE`](./LICENSE) یا مخزن را ببینید.
 
 ---
 
-⌨️ ساخته شده با ❤️ توسط **[Sobhan-SRZA](https://github.com/Sobhan-SRZA)** برای **[Persian Caesar](https://github.com/Persian-Caesar)**. اگر مفید بود، به مخزن ستاره دهید!
+⌨️ ساخته‌شده با ❤️ توسط **[Sobhan-SRZA](https://github.com/Sobhan-SRZA)** برای **[Persian Caesar](https://github.com/Persian-Caesar)**. اگر مفید بود، به مخزن ستاره دهید!
 
 ## تماس
 <div align="center">
   <a href="https://srza.ir" target="_blank">
-   <img align="left" src="https://raw.githubusercontent.com/Sobhan-SRZA/Sobhan-SRZA/refs/heads/main/images/social.png" alt="شبکه‌های اجتماعی Sobhan-SRZA" width=400px>
+   <img align="left" src="https://raw.githubusercontent.com/Sobhan-SRZA/Sobhan-SRZA/refs/heads/main/images/social.png" alt="Sobhan-SRZA social" width=400px>
   </a>
 
   <a href="https://t.me/d_opa_mine" target="_blank">
-   <img alt="تلگرام"
+   <img alt="Telegram"
     src="https://raw.githubusercontent.com/Sobhan-SRZA/Sobhan-SRZA/refs/heads/main/images/telegram-ch.svg"
     height="30" />
   </a>
 
   <a href="https://t.me/Sobhan_SRZA" target="_blank">
-   <img alt="تلگرام"
+   <img alt="Telegram"
     src="https://raw.githubusercontent.com/Sobhan-SRZA/Sobhan-SRZA/refs/heads/main/images/telegram-ac.svg"
     height="30" />
   </a>
 
   <a href="https://www.instagram.com/mr.sinre?igsh=cWk1aHdhaGRnOGg%3D&utm_source=qr" target="_blank">
-   <img alt="اینستاگرام"
+   <img alt="Instagram"
     src="https://raw.githubusercontent.com/Sobhan-SRZA/Sobhan-SRZA/refs/heads/main/images/instagram.svg"
     height="30" />
   </a>
 
   <a href="https://www.twitch.tv/sobhan_srza" target="_blank">
-   <img alt="توییچ"
+   <img alt="Twitch"
     src="https://raw.githubusercontent.com/Sobhan-SRZA/Sobhan-SRZA/refs/heads/main/images/twitch.svg"
     height="30" />
   </a>
 
   <a href="https://www.youtube.com/@mr_sinre?app=desktop&sub_confirmation=1" target="_blank">
-   <img alt="یوتیوب"
+   <img alt="YouTube"
     src="https://raw.githubusercontent.com/Sobhan-SRZA/Sobhan-SRZA/refs/heads/main/images/youtube.svg"
     height="30" />
   </a>
   
   <a href="https://github.com/Sobhan-SRZA" target="_blank">
-   <img alt="گیتهاب"
+   <img alt="Github"
     src="https://raw.githubusercontent.com/Sobhan-SRZA/Sobhan-SRZA/refs/heads/main/images/github.svg"
     height="30" />
   </a>
@@ -701,10 +859,10 @@ if (command === 'lyrics') {
 
   <div align="center">
    <a href="https://discord.com/users/865630940361785345" target="_blank">
-    <img alt="حساب دیسکورد من" src="https://discord.c99.nl/widget/theme-1/865630940361785345.png" />
+    <img alt="My Discord Account" src="https://discord.c99.nl/widget/theme-1/865630940361785345.png" />
    </a>
     <a href="https://discord.com/users/986314682547716117" target="_blank" align="right">
-    <img alt="حساب دیسکورد تیم" src="https://discord.c99.nl/widget/theme-1/986314682547716117.png" />
+    <img alt="Team Discord Account" src="https://discord.c99.nl/widget/theme-1/986314682547716117.png" />
    </a>
   </div>
 

@@ -1,14 +1,22 @@
 import {
     Client,
-    GatewayDispatchEvents
+    GatewayDispatchEvents,
+    LavalinkManagerOptions
 } from "./types";
 import {
     Manager,
     ManagerOptions
 } from "erela.js";
 
-export function LavalinkManager(client: Client, options: ManagerOptions) {
-    const manager = new Manager(options);
+export function LavalinkManager(client: Client, options: LavalinkManagerOptions) {
+    if (!options.send)
+        options.send = (id, payload) => {
+            const guild = client.guilds.cache.get(id);
+            if (guild)
+                guild.shard.send(payload);
+        }
+
+    const manager = new Manager(options as ManagerOptions);
 
     client.once("ready", () => manager.init(client.user?.id))
     client.ws.on(GatewayDispatchEvents.VoiceServerUpdate, (data) => manager.updateVoiceState(data));
