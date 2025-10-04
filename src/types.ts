@@ -82,7 +82,7 @@ export interface MusicPlayerOptions {
     autoLeaveOnEmptyQueue?: boolean;
     autoLeaveOnIdleMs?: number;
     logError?: boolean;
-    lavaLinkManager?: Manager,
+    lavaLinkManager?: LavalinkManagerType,
     token?: TokenOptions
 }
 

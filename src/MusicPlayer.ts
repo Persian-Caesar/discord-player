@@ -25,13 +25,14 @@ import {
     DeezerPlaylist,
     DeezerTrack,
     SpotifyPlaylist,
-    SpotifyTrack,
-    YouTubePlayList,
-    YouTubeVideo
+    SpotifyTrack
 } from "play-dl";
+import {
+    Player,
+    Track
+} from "erela.js";
 import { htmlToText } from "html-to-text";
 import { TrackInfo } from "soundcloud-downloader/src/info";
-import { Player, Track } from "erela.js";
 import EventEmitter from "events";
 import Stream from "stream";
 import playdl from "play-dl";
@@ -433,31 +434,20 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
     private async loadPlaylist(url: string): Promise<TrackMetadata[]> {
         try {
-            const playlist_result = await this.searchPlaylists(url);
-            if (this.useLavalink && this.manager) {
-                const res = await (this.player as Player).search(playlist_result[0].url);
-                console.log("🚀 ~ MusicPlayer ~ loadPlaylist ~ res:", res)
-
-                if (res.loadType === "PLAYLIST_LOADED") {
-                    return res.tracks.map(t => ({
-                        title: t.title || "Untitled Track",
-                        author: t.author,
-                        duration: t.isStream ? undefined : Math.floor(t.duration / 1000),
-                        thumbnail: t.thumbnail || undefined,
-                        source: this.detectSource(t.uri),
-                        url: t.uri
-                    })) as TrackMetadata[];
-                }
-
-                else {
-                    // Fallback if Lavalink fails for the platform
-                    return this.loadPlaylistFallback(url);
-                }
+            if (
+                playdl.yt_validate(url) === "playlist" ||
+                playdl.sp_validate(url) === "playlist" ||
+                (await playdl.dz_validate(url)) === "playlist" ||
+                (url.includes("soundcloud.com") && url.includes("/sets/"))
+            ) {
+                return await this.loadPlaylistFallback(url);
             }
 
-            else {
-                return this.loadPlaylistFallback(url);
-            }
+            // if it's not a URL but a search term
+            const results = await this.searchPlaylists(url);
+            if (results.length === 0) return [];
+
+            return await this.loadPlaylistFallback(results[0].url);
         }
 
         catch (e) {
@@ -623,10 +613,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                         ? "scsearch"
                         : platform
                     }:${query}`;
-                console.log("🚀 ~ MusicPlayer ~ searchOnPlatform ~ searchQuery:", searchQuery)
 
                 const res = await retry(() => (this.player as Player).search(searchQuery));
-                console.log("🚀 ~ MusicPlayer ~ searchOnPlatform ~ res:", res)
                 if (res.loadType === "LOAD_FAILED" || res.loadType === "NO_MATCHES") {
                     return [];
                 }
@@ -900,19 +888,109 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
         if (this.useLavalink && this.manager) {
             try {
-                const searched = isPlaylist
-                    ? await playdl.playlist_info(tracks[0].url, { incomplete: true })
-                    : await playdl.search(input as string);
-                console.log("🚀 ~ MusicPlayer ~ play ~ searched:", searched)
+                let res;
 
-                const res = isPlaylist && searched instanceof YouTubePlayList
-                    ? (await searched.all_videos())
-                    : await (this.player as Player).search(
-                        `${(searched as YouTubeVideo[])[0].title} ${(searched as YouTubeVideo[])[0].channel?.name}`
-                    );
+                if (isPlaylist) {
+                    // handle playlists by platform
+                    if (playdl.sp_validate(tracks[0].url) === "playlist") {
+                        const info = await playdl.spotify(tracks[0].url) as SpotifyPlaylist;
+                        const all = await info.all_tracks();
 
-                console.log("🚀 ~ MusicPlayer ~ play ~ res:", res)
+                        const playlistTracks: TrackMetadata[] = [];
+
+                        for (const t of all) {
+                            const result = await (this.player as Player).search(`${t.name} ${t.artists[0]?.name || ""}`);
+                            if (result.tracks.length > 0) {
+                                (this.player as Player).queue.add(result.tracks[0]);
+                                const meta: TrackMetadata = {
+                                    title: t.name,
+                                    author: t.artists[0]?.name,
+                                    duration: t.durationInSec,
+                                    thumbnail: t.thumbnail?.url,
+                                    source: "spotify",
+                                    url: t.url
+                                };
+                                syncQueue(meta);
+                                playlistTracks.push(meta);
+                            }
+                        }
+
+                        const queue = await this.getQueue();
+                        this.emit(MusicPlayerEvent.QueueAdd, { metadatas: playlistTracks, queue });
+
+                        return;
+                    }
+
+                    else if (tracks[0].url.includes("soundcloud.com") && tracks[0].url.includes("/sets/")) {
+                        const info = await scdl.getSetInfo(tracks[0].url);
+
+                        const playlistTracks: TrackMetadata[] = [];
+
+                        for (const t of info.tracks) {
+                            const result = await (this.player as Player).search(`${t.title} ${t.user?.username || ""}`);
+                            if (result.tracks.length > 0) {
+                                (this.player as Player).queue.add(result.tracks[0]);
+                                const meta = {
+                                    title: t.title,
+                                    author: t.user?.username,
+                                    duration: Math.floor(t.duration! / 1000),
+                                    thumbnail: t.artwork_url || t.user?.avatar_url,
+                                    source: "soundcloud",
+                                    url: t.permalink_url!
+                                } as TrackMetadata;
+                                syncQueue(meta);
+                                playlistTracks.push(meta);
+                            }
+                        }
+
+                        const queue = await this.getQueue();
+                        this.emit(MusicPlayerEvent.QueueAdd, { metadatas: playlistTracks, queue });
+
+                        return;
+                    }
+
+                    else if (await playdl.dz_validate(tracks[0].url) === "playlist") {
+                        const info = await playdl.deezer(tracks[0].url) as DeezerPlaylist;
+                        const all = await info.all_tracks();
+
+                        const playlistTracks: TrackMetadata[] = [];
+
+                        for (const t of all) {
+                            const result = await (this.player as Player).search(`${t.title} ${t.artist?.name || ""}`);
+                            if (result.tracks.length > 0) {
+                                (this.player as Player).queue.add(result.tracks[0]);
+                                const meta = {
+                                    title: t.title,
+                                    author: t.artist?.name,
+                                    duration: t.durationInSec,
+                                    thumbnail: t.album.cover?.medium || t.artist?.picture?.medium,
+                                    source: "deezer",
+                                    url: t.url
+                                } as TrackMetadata;
+                                syncQueue(meta);
+                                playlistTracks.push(meta);
+                            }
+                        }
+
+                        const queue = await this.getQueue();
+                        this.emit(MusicPlayerEvent.QueueAdd, { metadatas: playlistTracks, queue });
+
+                        return;
+                    }
+
+                    else {
+                        res = await (this.player as Player).search(tracks[0].url);
+                    }
+                }
+
+                else {
+                    res = await (this.player as Player).search(input as string);
+                }
+
+
                 if (Array.isArray(res)) {
+                    const playlistTracks: TrackMetadata[] = [];
+
                     res.forEach(t => {
                         const track = {
                             duration: t.durationInSec,
@@ -923,21 +1001,23 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                         } as Track;
 
                         (this.player as Player).queue.add(track);
-                        syncQueue({
+                        const meta = {
                             title: t.title || "Untitled Track",
                             author: t.channel?.name,
                             duration: Math.floor(t.durationInSec / 1000),
                             thumbnail: t.thumbnails[0].url,
                             source: this.detectSource(t.url) as Source,
                             url: t.url
-                        });
+                        } as TrackMetadata;
+                        syncQueue(meta);
+                        playlistTracks.push(meta);
                     });
+
                     const queue = await this.getQueue();
-                    console.log("🚀 ~ MusicPlayer ~ play ~ queue:", queue)
-                    this.emit(MusicPlayerEvent.QueueAdd, { metadatas: tracks, queue });
+                    this.emit(MusicPlayerEvent.QueueAdd, { metadatas: playlistTracks, queue });
                 }
 
-                else if (res.loadType === "TRACK_LOADED" || res.loadType === "SEARCH_RESULT") {
+                else if (res?.loadType === "TRACK_LOADED" || res?.loadType === "SEARCH_RESULT") {
                     (this.player as Player).queue.add(res.tracks[0]);
                     syncQueue(tracks[0]);
                     const queue = await this.getQueue();
@@ -972,8 +1052,9 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             }
         }
 
+        // inside play() - Non-Lavalink section
         else {
-            // Non-Lavalink: Add all tracks to queue and emit single event
+            // Add all tracks to queue
             for (const track of tracks) {
                 syncQueue(track);
             }
@@ -983,12 +1064,13 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 ? { metadatas: tracks, queue }
                 : { metadata: tracks[0], queue });
 
-            // Play the first track
-            if (this.queue.length > 0) {
-                const firstTrack = this.queue[0]; // Don't shift yet, let onIdle handle it
+            // If nothing is playing, start with the first track
+            if (!this.playing && this.queue.length > 0) {
+                const firstTrack = this.queue.shift()!;
                 await this.playFallback(firstTrack, true);
             }
         }
+
 
         // Update history and start playback if not already playing
         tracks.forEach(track => this.history.push(track));
@@ -1010,14 +1092,13 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             const err = new MusicPlayerError(`Failed to create stream for ${track.url}`, "StreamError");
             console.error(err.toString());
             this.emit(MusicPlayerEvent.Error, err);
-
             return;
         }
 
         const resource = createAudioResource(stream, { inlineVolume: true });
         resource.volume?.setVolume(this.volume / 100);
         (this.player as AudioPlayer).play(resource);
-        this.queue.push(track);
+
         if (!silent) {
             const queue = await this.getQueue();
             this.emit(MusicPlayerEvent.QueueAdd, { metadata: track, queue });
@@ -1111,7 +1192,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         };
 
         if (playdl.yt_validate(url) === "video") {
-            return await retry(() => playdl.stream(url, { quality: 2 }).then(s => s.stream));
+            const yt = await playdl.stream(url, { quality: 2 });
+            return yt.stream;
         }
 
         if (playdl.sp_validate(url) === "track") {
