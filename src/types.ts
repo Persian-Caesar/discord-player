@@ -1,4 +1,8 @@
-import { ManagerOptions, Payload } from "erela.js";
+import {
+    Manager,
+    ManagerOptions,
+    Payload
+} from "erela.js";
 
 export enum MusicPlayerEvent {
     Start = "start",
@@ -77,8 +81,28 @@ export interface MusicPlayerOptions {
     initialVolume?: number;
     autoLeaveOnEmptyQueue?: boolean;
     autoLeaveOnIdleMs?: number;
-    youtubeCookie?: string;
     logError?: boolean;
+    lavaLinkManager?: Manager,
+    token?: TokenOptions
+}
+
+export interface TokenOptions {
+    spotify?: {
+        client_id: string;
+        client_secret: string;
+        refresh_token?: string;
+        market?: string;
+    };
+
+    soundcloud?: {
+        client_id: string;
+    };
+
+    youtube?: {
+        cookie: string;
+    };
+
+    useragent?: string[];
 }
 
 export interface TextChannel {
@@ -99,7 +123,6 @@ export interface Client {
     };
 }
 
-// --- Guild and Shard typings ---
 export interface Guild {
     id: string;
     shard: Shard;
@@ -109,7 +132,8 @@ export interface Shard {
     send(payload: Payload): void;
 }
 
-// --- ManagerOptions with optional send ---
+export type LavalinkManagerType = Manager;
+
 export type LavalinkManagerOptions = Omit<ManagerOptions, "send"> & {
     send?: (id: string, payload: Payload) => void;
 };

@@ -18,23 +18,23 @@ import {
     SearchPlatform,
     TextChannel,
     PlaylistMetadata,
-    Source
+    Source,
+    LavalinkManagerType
 } from "./types";
-import playdl, {
+import {
     DeezerPlaylist,
     DeezerTrack,
     SpotifyPlaylist,
     SpotifyTrack,
+    YouTubePlayList,
     YouTubeVideo
 } from "play-dl";
-import {
-    Manager,
-    Player
-} from "erela.js";
 import { htmlToText } from "html-to-text";
 import { TrackInfo } from "soundcloud-downloader/src/info";
-import type { Stream } from "stream";
+import { Player, Track } from "erela.js";
 import EventEmitter from "events";
+import Stream from "stream";
+import playdl from "play-dl";
 import scdl from "soundcloud-downloader";
 
 // Custom error class for detailed console output
@@ -58,7 +58,6 @@ const metadataCache = new Map<string, TrackMetadata[]>();
 
 export class MusicPlayer extends EventEmitter<TypedEmitter> {
     private previousQueueOrder: TrackMetadata[] = [];
-    public manager?: Manager;
     public player?: Player | AudioPlayer;
     private volume: number;
     private queue: TrackMetadata[] = [];
@@ -71,6 +70,7 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     private idleTimer: NodeJS.Timeout | null = null;
     private shuffield = false;
     private useLavalink: boolean;
+    private manager?: LavalinkManagerType;
     private radioMode = false;
     private radioUrls: string[] = [];
 
@@ -87,25 +87,28 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
     constructor(
         public channel: VoiceChannel,
         public textChannel: TextChannel,
-        lavaLinkManager?: Manager,
         private options: MusicPlayerOptions = {}
     ) {
         super();
 
-        this.useLavalink = !!lavaLinkManager;
-        this.manager = lavaLinkManager;
-        this.volume = Math.min(Math.max((options.initialVolume ?? 100), 0), 200);
-        this.autoLeaveOnEmptyQueue = options.autoLeaveOnEmptyQueue ?? true;
-        this.autoLeaveOnIdleMs = options.autoLeaveOnIdleMs ?? 5 * 60_000;
+        this.useLavalink = !!this.options.lavaLinkManager;
+        this.manager = this.options.lavaLinkManager;
+        this.volume = Math.min(Math.max((this.options.initialVolume ?? 100), 0), 200);
+        this.autoLeaveOnEmptyQueue = this.options.autoLeaveOnEmptyQueue ?? true;
+        this.autoLeaveOnIdleMs = this.options.autoLeaveOnIdleMs ?? 5 * 60_000;
 
         this.connectionData = {
-            channelId: channel.id,
-            guildId: channel.guild.id,
-            adapterCreator: channel.guild.voiceAdapterCreator,
+            channelId: this.channel.id,
+            guildId: this.channel.guild.id,
+            adapterCreator: this.channel.guild.voiceAdapterCreator,
             selfDeaf: true,
             selfMute: false,
             debug: false
         };
+
+        if (this.options.token) {
+            void playdl.setToken(this.options.token as any);
+        }
 
         if (this.useLavalink && this.manager) {
             this.player = this.manager.create({
@@ -169,10 +172,6 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             });
             this.player.on(AudioPlayerStatus.Idle, () => this.onIdle());
             this.player.on(AudioPlayerStatus.Playing, () => this.clearIdleTimer());
-
-            if (options.youtubeCookie) {
-                void playdl.setToken({ youtube: { cookie: options.youtubeCookie } });
-            }
         }
     }
 
@@ -434,8 +433,11 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
     private async loadPlaylist(url: string): Promise<TrackMetadata[]> {
         try {
+            const playlist_result = await this.searchPlaylists(url);
             if (this.useLavalink && this.manager) {
-                const res = await (this.player as Player).search(url);
+                const res = await (this.player as Player).search(playlist_result[0].url);
+                console.log("🚀 ~ MusicPlayer ~ loadPlaylist ~ res:", res)
+
                 if (res.loadType === "PLAYLIST_LOADED") {
                     return res.tracks.map(t => ({
                         title: t.title || "Untitled Track",
@@ -615,8 +617,16 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
         if (this.useLavalink && this.manager) {
             try {
-                const searchQuery = `${platform === "youtube" ? "ytsearch" : platform === "soundcloud" ? "scsearch" : platform}:${query}`;
+                const searchQuery = `${platform === "youtube"
+                    ? "ytsearch"
+                    : platform === "soundcloud"
+                        ? "scsearch"
+                        : platform
+                    }:${query}`;
+                console.log("🚀 ~ MusicPlayer ~ searchOnPlatform ~ searchQuery:", searchQuery)
+
                 const res = await retry(() => (this.player as Player).search(searchQuery));
+                console.log("🚀 ~ MusicPlayer ~ searchOnPlatform ~ res:", res)
                 if (res.loadType === "LOAD_FAILED" || res.loadType === "NO_MATCHES") {
                     return [];
                 }
@@ -626,10 +636,11 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                     const metadata = await this.extractMetadata(track.uri);
                     tracks.push(metadata);
                     metadataCache.set(track.uri, [metadata]);
-
                 }
+
                 return tracks;
             }
+
             catch (err) {
                 console.error(new MusicPlayerError(`Lavalink search error on ${platform}: ${err}`, "SearchError").toString());
                 return [];
@@ -889,26 +900,48 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
 
         if (this.useLavalink && this.manager) {
             try {
-                const res = await (this.player as Player).search(isPlaylist ? input as string : tracks[0].url);
-                if (res.loadType === "PLAYLIST_LOADED") {
-                    res.tracks.forEach(t => {
-                        (this.player as Player).queue.add(t);
+                const searched = isPlaylist
+                    ? await playdl.playlist_info(tracks[0].url, { incomplete: true })
+                    : await playdl.search(input as string);
+                console.log("🚀 ~ MusicPlayer ~ play ~ searched:", searched)
+
+                const res = isPlaylist && searched instanceof YouTubePlayList
+                    ? (await searched.all_videos())
+                    : await (this.player as Player).search(
+                        `${(searched as YouTubeVideo[])[0].title} ${(searched as YouTubeVideo[])[0].channel?.name}`
+                    );
+
+                console.log("🚀 ~ MusicPlayer ~ play ~ res:", res)
+                if (Array.isArray(res)) {
+                    res.forEach(t => {
+                        const track = {
+                            duration: t.durationInSec,
+                            title: t.title,
+                            thumbnail: t.thumbnails[0].url,
+                            author: t.channel?.name,
+                            uri: t.url
+                        } as Track;
+
+                        (this.player as Player).queue.add(track);
                         syncQueue({
                             title: t.title || "Untitled Track",
-                            author: t.author,
-                            duration: t.isStream ? undefined : Math.floor(t.duration / 1000),
-                            thumbnail: t.thumbnail || undefined,
-                            source: this.detectSource(t.uri) as Source,
-                            url: t.uri
+                            author: t.channel?.name,
+                            duration: Math.floor(t.durationInSec / 1000),
+                            thumbnail: t.thumbnails[0].url,
+                            source: this.detectSource(t.url) as Source,
+                            url: t.url
                         });
                     });
-                    this.emit(MusicPlayerEvent.QueueAdd, { metadatas: tracks, queue: await this.getQueue() });
+                    const queue = await this.getQueue();
+                    console.log("🚀 ~ MusicPlayer ~ play ~ queue:", queue)
+                    this.emit(MusicPlayerEvent.QueueAdd, { metadatas: tracks, queue });
                 }
 
                 else if (res.loadType === "TRACK_LOADED" || res.loadType === "SEARCH_RESULT") {
                     (this.player as Player).queue.add(res.tracks[0]);
                     syncQueue(tracks[0]);
-                    this.emit(MusicPlayerEvent.QueueAdd, { metadata: tracks[0], queue: await this.getQueue() });
+                    const queue = await this.getQueue();
+                    this.emit(MusicPlayerEvent.QueueAdd, { metadata: tracks[0], queue });
                 }
 
                 else {
@@ -945,7 +978,10 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
                 syncQueue(track);
             }
 
-            this.emit(MusicPlayerEvent.QueueAdd, isPlaylist ? { metadatas: tracks, queue: this.queue } : { metadata: tracks[0], queue: this.queue });
+            const queue = await this.getQueue();
+            this.emit(MusicPlayerEvent.QueueAdd, isPlaylist
+                ? { metadatas: tracks, queue }
+                : { metadata: tracks[0], queue });
 
             // Play the first track
             if (this.queue.length > 0) {
@@ -983,7 +1019,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
         (this.player as AudioPlayer).play(resource);
         this.queue.push(track);
         if (!silent) {
-            this.emit(MusicPlayerEvent.QueueAdd, { metadata: track, queue: this.queue });
+            const queue = await this.getQueue();
+            this.emit(MusicPlayerEvent.QueueAdd, { metadata: track, queue });
         }
     }
 
@@ -1034,7 +1071,8 @@ export class MusicPlayer extends EventEmitter<TypedEmitter> {
             return;
         }
 
-        this.emit(MusicPlayerEvent.Finish, { queue: this.queue, history: this.history.map(h => h.url) });
+        const queue = await this.getQueue();
+        this.emit(MusicPlayerEvent.Finish, { queue, history: this.history.map(h => h.url) });
         if (this.autoLeaveOnEmptyQueue) {
             this.emit(MusicPlayerEvent.Disconnect);
             this.disconnect();

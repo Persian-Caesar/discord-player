@@ -1,6 +1,7 @@
 import {
     Client,
     GatewayDispatchEvents,
+    LavalinkManagerType,
     LavalinkManagerOptions
 } from "./types";
 import {
@@ -8,7 +9,7 @@ import {
     ManagerOptions
 } from "erela.js";
 
-export function LavalinkManager(client: Client, options: LavalinkManagerOptions) {
+export function LavalinkManager(client: Client, options: LavalinkManagerOptions): LavalinkManagerType {
     if (!options.send)
         options.send = (id, payload) => {
             const guild = client.guilds.cache.get(id);
